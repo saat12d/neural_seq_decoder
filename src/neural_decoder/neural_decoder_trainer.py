@@ -1,6 +1,7 @@
 import os
 import pickle
 import time
+import json
 
 from edit_distance import SequenceMatcher
 import hydra
@@ -16,6 +17,7 @@ from .dataset import SpeechDataset
 def getDatasetLoaders(
     datasetName,
     batchSize,
+    args=None,
 ):
     with open(datasetName, "rb") as handle:
         loadedData = pickle.load(handle)
@@ -33,8 +35,22 @@ def getDatasetLoaders(
             torch.stack(days),
         )
 
-    train_ds = SpeechDataset(loadedData["train"], transform=None)
-    test_ds = SpeechDataset(loadedData["test"])
+    # Get time masking parameters from args if available
+    if args is None:
+        args = {}
+    time_mask_prob = args.get("time_mask_prob", 0.10)
+    time_mask_width = args.get("time_mask_width", 20)
+    time_mask_max_masks = args.get("time_mask_max_masks", 1)
+    
+    train_ds = SpeechDataset(
+        loadedData["train"], 
+        transform=None, 
+        split="train",
+        time_mask_prob=time_mask_prob,
+        time_mask_width=time_mask_width,
+        time_mask_max_masks=time_mask_max_masks
+    )
+    test_ds = SpeechDataset(loadedData["test"], split="test")
 
     train_loader = DataLoader(
         train_ds,
@@ -67,6 +83,7 @@ def trainModel(args):
     trainLoader, testLoader, loadedData = getDatasetLoaders(
         args["datasetPath"],
         args["batchSize"],
+        args,
     )
 
     model = GRUDecoder(
@@ -81,27 +98,74 @@ def trainModel(args):
         kernelLen=args["kernelLen"],
         gaussianSmoothWidth=args["gaussianSmoothWidth"],
         bidirectional=args["bidirectional"],
+        use_layer_norm=args.get("use_layer_norm", False),
+        input_dropout=args.get("input_dropout", 0.0),
     ).to(device)
 
     loss_ctc = torch.nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=args["lrStart"],
-        betas=(0.9, 0.999),
-        eps=0.1,
-        weight_decay=args["l2_decay"],
-    )
-    scheduler = torch.optim.lr_scheduler.LinearLR(
+    
+    # Use AdamW optimizer with weight_decay parameter
+    optimizer_name = args.get("optimizer", "adamw").lower()
+    weight_decay = args.get("weight_decay", args.get("l2_decay", 1e-4))
+    
+    if optimizer_name == "adamw":
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=args["lrStart"],
+            weight_decay=weight_decay,
+        )
+    else:
+        # Fallback to Adam for backward compatibility
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=args["lrStart"],
+            betas=(0.9, 0.999),
+            eps=0.1,
+            weight_decay=weight_decay,
+        )
+    
+    # Run #3: Linear warmup → cosine decay
+    warmup_steps = args.get("warmup_steps", 1000)
+    cosine_steps = args.get("cosine_T_max", args["nBatch"] - warmup_steps)
+    
+    # Use LambdaLR for warmup (more reliable than LinearLR with SequentialLR)
+    # Warmup: linearly increase from 0 to lrStart over warmup_steps
+    def warmup_lambda(step):
+        if step >= warmup_steps:
+            return 1.0
+        return float(step) / float(max(1, warmup_steps))
+    
+    warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer,
-        start_factor=1.0,
-        end_factor=args["lrEnd"] / args["lrStart"],
-        total_iters=args["nBatch"],
+        lr_lambda=warmup_lambda,
+    )
+    
+    # Cosine decay: decay from lrStart to lrEnd over remaining steps
+    cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=cosine_steps,
+        eta_min=args["lrEnd"],
+    )
+    
+    # Chain schedulers: warmup first, then cosine
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[warmup_steps],
     )
 
     # --train--
     testLoss = []
     testCER = []
     startTime = time.time()
+    
+    # Run #3: Track moving average CER (over last 200 steps)
+    moving_avg_window = 200
+    cer_history = []
+    best_cer_ma = float('inf')
+    
+    # Metrics logging file
+    metrics_file = os.path.join(args["outputDir"], "metrics.jsonl")
     for batch in range(args["nBatch"]):
         model.train()
 
@@ -138,8 +202,10 @@ def trainModel(args):
         # Backpropagation
         optimizer.zero_grad()
         loss.backward()
+        # Run #3: Strong gradient clipping to prevent loss spikes
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
-        scheduler.step()
+        scheduler.step()  # Step scheduler after optimizer
 
         # print(endTime - startTime)
 
@@ -194,14 +260,39 @@ def trainModel(args):
                 avgDayLoss = np.sum(allLoss) / len(testLoader)
                 cer = total_edit_distance / total_seq_length
 
+                # Run #3: Update moving average CER
+                cer_history.append(cer)
+                if len(cer_history) > moving_avg_window:
+                    cer_history.pop(0)
+                cer_ma = np.mean(cer_history) if cer_history else cer
+
                 endTime = time.time()
+                time_per_batch = (endTime - startTime) / 100
+                current_lr = scheduler.get_last_lr()[0]
                 print(
-                    f"batch {batch}, ctc loss: {avgDayLoss:>7f}, cer: {cer:>7f}, time/batch: {(endTime - startTime)/100:>7.3f}"
+                    f"batch {batch}, ctc loss: {avgDayLoss:>7f}, cer: {cer:>7f}, cer_ma: {cer_ma:>7f}, time/batch: {time_per_batch:>7.3f}, lr: {current_lr:.6f}"
                 )
+                
+                # Log metrics to JSONL file
+                metrics_entry = {
+                    "step": batch,
+                    "ctc_loss": float(avgDayLoss),
+                    "cer": float(cer),
+                    "cer_ma": float(cer_ma),
+                    "lr": float(current_lr),
+                    "time_per_batch": float(time_per_batch),
+                }
+                with open(metrics_file, "a") as f:
+                    f.write(json.dumps(metrics_entry) + "\n")
+                
                 startTime = time.time()
 
-            if len(testCER) > 0 and cer < np.min(testCER):
+            # Run #3: Save best checkpoint based on moving average CER
+            if cer_ma < best_cer_ma:
+                best_cer_ma = cer_ma
+                # Save best model checkpoint
                 torch.save(model.state_dict(), args["outputDir"] + "/modelWeights")
+                torch.save(model.state_dict(), os.path.join(args["outputDir"], "best_model.pt"))
             testLoss.append(avgDayLoss)
             testCER.append(cer)
 
@@ -211,6 +302,9 @@ def trainModel(args):
 
             with open(args["outputDir"] + "/trainingStats", "wb") as file:
                 pickle.dump(tStats, file)
+    
+    # Save final model checkpoint
+    torch.save(model.state_dict(), os.path.join(args["outputDir"], "final_model.pt"))
 
 
 def loadModel(modelDir, nInputLayers=24, device="cuda"):
@@ -230,6 +324,8 @@ def loadModel(modelDir, nInputLayers=24, device="cuda"):
         kernelLen=args["kernelLen"],
         gaussianSmoothWidth=args["gaussianSmoothWidth"],
         bidirectional=args["bidirectional"],
+        use_layer_norm=args.get("use_layer_norm", False),
+        input_dropout=args.get("input_dropout", 0.0),
     ).to(device)
 
     model.load_state_dict(torch.load(modelWeightPath, map_location=device))

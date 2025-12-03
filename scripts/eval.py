@@ -91,6 +91,8 @@ def main():
         kernelLen    = int(train_args.get("kernelLen", 32)),
         gaussianSmoothWidth = float(train_args.get("gaussianSmoothWidth", 2.0)),
         bidirectional= bool(train_args.get("bidirectional", True)),
+        use_layer_norm = bool(train_args.get("use_layer_norm", False)),
+        input_dropout  = float(train_args.get("input_dropout", 0.0)),
     ).to(a.device)
 
     # 4) checkpoint (supports common names & no-extension files)

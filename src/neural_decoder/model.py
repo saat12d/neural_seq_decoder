@@ -18,6 +18,8 @@ class GRUDecoder(nn.Module):
         kernelLen=14,
         gaussianSmoothWidth=0,
         bidirectional=False,
+        use_layer_norm=False,
+        input_dropout=0.0,
     ):
         super(GRUDecoder, self).__init__()
 
@@ -34,6 +36,10 @@ class GRUDecoder(nn.Module):
         self.gaussianSmoothWidth = gaussianSmoothWidth
         self.bidirectional = bidirectional
         self.inputLayerNonlinearity = torch.nn.Softsign()
+        
+        # Layer normalization and input dropout for regularization
+        self.ln = nn.LayerNorm(neural_dim) if use_layer_norm else nn.Identity()
+        self.in_drop = nn.Dropout(input_dropout) if input_dropout > 0 else nn.Identity()
         self.unfolder = torch.nn.Unfold(
             (self.kernelLen, 1), dilation=1, padding=0, stride=self.strideLen
         )
@@ -92,10 +98,15 @@ class GRUDecoder(nn.Module):
         ) + torch.index_select(self.dayBias, 0, dayIdx)
         transformedNeural = self.inputLayerNonlinearity(transformedNeural)
 
+        # Apply layer normalization and input dropout before GRU
+        x = transformedNeural
+        x = self.ln(x)
+        x = self.in_drop(x)
+        
         # stride/kernel
         stridedInputs = torch.permute(
             self.unfolder(
-                torch.unsqueeze(torch.permute(transformedNeural, (0, 2, 1)), 3)
+                torch.unsqueeze(torch.permute(x, (0, 2, 1)), 3)
             ),
             (0, 2, 1),
         )
@@ -104,14 +115,14 @@ class GRUDecoder(nn.Module):
         if self.bidirectional:
             h0 = torch.zeros(
                 self.layer_dim * 2,
-                transformedNeural.size(0),
+                x.size(0),
                 self.hidden_dim,
                 device=self.device,
             ).requires_grad_()
         else:
             h0 = torch.zeros(
                 self.layer_dim,
-                transformedNeural.size(0),
+                x.size(0),
                 self.hidden_dim,
                 device=self.device,
             ).requires_grad_()
