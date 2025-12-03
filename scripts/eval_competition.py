@@ -5,13 +5,12 @@ import numpy as np
 
 from edit_distance import SequenceMatcher
 import torch
-from dataset import SpeechDataset
+from neural_decoder.dataset import SpeechDataset
+from neural_decoder.nnDecoderModel import getDatasetLoaders, loadModel
 
 import matplotlib.pyplot as plt
 
 
-from nnDecoderModel import getDatasetLoaders
-from nnDecoderModel import loadModel
 import neuralDecoder.utils.lmDecoderUtils as lmDecoderUtils
 import pickle
 import argparse
@@ -24,7 +23,7 @@ input_args = parser.parse_args()
 with open(input_args.modelPath + "/args", "rb") as handle:
     args = pickle.load(handle)
 
-args["datasetPath"] = "/oak/stanford/groups/henderj/stfan/data/ptDecoder_ctc"
+args["datasetPath"] = "/home/bciuser/projects/neural_seq_decoder/data/formatted/ptDecoder_ctc"
 trainLoaders, testLoaders, loadedData = getDatasetLoaders(
     args["datasetPath"], args["seqLen"], args["maxTimeSeriesLen"], args["batchSize"]
 )
@@ -48,8 +47,8 @@ if partition == "competition":
 elif partition == "test":
     testDayIdxs = range(len(loadedData[partition]))
 
-for i, testDayIdx in testDayIdxs:
-    test_ds = SpeechDataset([loadedData[partition][i]])
+for i, testDayIdx in enumerate(testDayIdxs):
+    test_ds = SpeechDataset([loadedData[partition][testDayIdx]])
     test_loader = torch.utils.data.DataLoader(
         test_ds, batch_size=1, shuffle=False, num_workers=0
     )
@@ -73,22 +72,22 @@ for i, testDayIdx in testDayIdxs:
             )
             rnn_outputs["trueSeqs"].append(trueSeq)
 
-        transcript = loadedData[partition][i]["transcriptions"][j].strip()
+        transcript = loadedData[partition][testDayIdx]["transcriptions"][j].strip()
         transcript = re.sub(r"[^a-zA-Z\- \']", "", transcript)
         transcript = transcript.replace("--", "").lower()
         rnn_outputs["transcriptions"].append(transcript)
 
 
-MODEL_CACHE_DIR = "/scratch/users/stfan/huggingface"
+MODEL_CACHE_DIR = "/home/bciuser/projects/neural_seq_decoder/data/hf_cache"
 # Load OPT 6B model
-llm, llm_tokenizer = lmDecoderUtils.build_opt(
-    cacheDir=MODEL_CACHE_DIR, device="auto", load_in_8bit=True
-)
+# llm, llm_tokenizer = lmDecoderUtils.build_opt(
+#     cacheDir=MODEL_CACHE_DIR, device="auto", load_in_8bit=True
+# )
 
-lmDir = "/oak/stanford/groups/henderj/stfan/code/nptlrig2/LanguageModelDecoder/examples/speech/s0/lm_order_exp/5gram/data/lang_test"
-ngramDecoder = lmDecoderUtils.build_lm_decoder(
-    lmDir, acoustic_scale=0.5, nbest=100, beam=18
-)
+# lmDir = "/oak/stanford/groups/henderj/stfan/code/nptlrig2/LanguageModelDecoder/examples/speech/s0/lm_order_exp/5gram/data/lang_test"
+# ngramDecoder = lmDecoderUtils.build_lm_decoder(
+#     lmDir, acoustic_scale=0.5, nbest=100, beam=18
+# )
 
 
 
