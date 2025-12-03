@@ -2,6 +2,7 @@ import os
 import pickle
 import time
 import json
+import logging
 
 from edit_distance import SequenceMatcher
 import hydra
@@ -12,6 +13,36 @@ from torch.utils.data import DataLoader
 
 from .model import GRUDecoder
 from .dataset import SpeechDataset
+
+# Setup logging
+def setup_logging(output_dir):
+    """Setup logging to both file and console."""
+    log_file = os.path.join(output_dir, "train.log")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    return logging.getLogger(__name__)
+
+
+def ctc_greedy_decode(logits, T_eff):
+    """
+    Greedy CTC decode with blank=0, collapse repeats, drop blanks.
+    logits: (B,T,C) or (T,C); T_eff: effective time length (after stride/kernel).
+    """
+    if logits.ndim == 3:
+        logits = logits[0]
+    path = logits[:T_eff].argmax(dim=-1).cpu().numpy().tolist()
+    decoded, prev = [], None
+    for p in path:
+        if p != 0 and p != prev:
+            decoded.append(p)
+        prev = p
+    return np.array(decoded, dtype=np.int32)
 
 
 def getDatasetLoaders(
@@ -52,20 +83,24 @@ def getDatasetLoaders(
     )
     test_ds = SpeechDataset(loadedData["test"], split="test")
 
+    # Speed optimization: Use multiple workers for data loading
+    num_workers = args.get("num_workers", 4)
     train_loader = DataLoader(
         train_ds,
         batch_size=batchSize,
         shuffle=True,
-        num_workers=0,
+        num_workers=num_workers,
         pin_memory=True,
+        persistent_workers=num_workers > 0,  # Keep workers alive between epochs
         collate_fn=_padding,
     )
     test_loader = DataLoader(
         test_ds,
         batch_size=batchSize,
         shuffle=False,
-        num_workers=0,
+        num_workers=num_workers,
         pin_memory=True,
+        persistent_workers=num_workers > 0,
         collate_fn=_padding,
     )
 
@@ -73,12 +108,25 @@ def getDatasetLoaders(
 
 def trainModel(args):
     os.makedirs(args["outputDir"], exist_ok=True)
+    
+    # Setup logging
+    logger = setup_logging(args["outputDir"])
+    logger.info("=" * 80)
+    logger.info("Starting training run")
+    logger.info("=" * 80)
+    
     torch.manual_seed(args["seed"])
     np.random.seed(args["seed"])
     device = "cuda"
-
-    with open(args["outputDir"] + "/args", "wb") as file:
-        pickle.dump(args, file)
+    
+    # Log training configuration
+    logger.info(f"Output directory: {args['outputDir']}")
+    logger.info(f"Dataset path: {args['datasetPath']}")
+    logger.info(f"Batch size: {args['batchSize']}")
+    logger.info(f"Total batches: {args['nBatch']}")
+    logger.info(f"Seed: {args['seed']}")
+    
+    # Note: args will be saved again after nDays is determined
 
     trainLoader, testLoader, loadedData = getDatasetLoaders(
         args["datasetPath"],
@@ -86,12 +134,40 @@ def trainModel(args):
         args,
     )
 
+    # Save nDays to args for proper model loading later
+    n_days = len(loadedData["train"])
+    args["nDays"] = n_days
+    
+    # Log dataset statistics
+    logger.info(f"Dataset loaded: {n_days} training days")
+    logger.info(f"Training samples: {len(trainLoader.dataset)}")
+    logger.info(f"Test samples: {len(testLoader.dataset)}")
+    
+    # Save args again now that nDays is included
+    with open(args["outputDir"] + "/args", "wb") as file:
+        pickle.dump(args, file)
+
+    # Log model architecture
+    logger.info("=" * 80)
+    logger.info("Model Architecture")
+    logger.info("=" * 80)
+    logger.info(f"Input features: {args['nInputFeatures']}")
+    logger.info(f"Hidden units: {args['nUnits']}")
+    logger.info(f"GRU layers: {args['nLayers']}")
+    logger.info(f"Output classes: {args['nClasses']} (+ 1 blank = {args['nClasses'] + 1})")
+    logger.info(f"Days (per-day embeddings): {n_days}")
+    logger.info(f"Dropout: {args['dropout']}")
+    logger.info(f"Input dropout: {args.get('input_dropout', 0.0)}")
+    logger.info(f"Layer norm: {args.get('use_layer_norm', False)}")
+    logger.info(f"Bidirectional: {args['bidirectional']}")
+    logger.info(f"Stride length: {args['strideLen']}, Kernel length: {args['kernelLen']}")
+    
     model = GRUDecoder(
         neural_dim=args["nInputFeatures"],
         n_classes=args["nClasses"],
         hidden_dim=args["nUnits"],
         layer_dim=args["nLayers"],
-        nDays=len(loadedData["train"]),
+        nDays=n_days,
         dropout=args["dropout"],
         device=device,
         strideLen=args["strideLen"],
@@ -101,8 +177,30 @@ def trainModel(args):
         use_layer_norm=args.get("use_layer_norm", False),
         input_dropout=args.get("input_dropout", 0.0),
     ).to(device)
+    
+    # Count parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logger.info(f"Total parameters: {total_params:,} ({total_params/1e6:.2f}M)")
+    logger.info(f"Trainable parameters: {trainable_params:,}")
 
     loss_ctc = torch.nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)
+    
+    # Speed optimization: Mixed precision training (FP16/BF16)
+    use_amp = args.get("use_amp", True)  # Enable by default
+    if use_amp:
+        # Use BF16 on Ampere+ GPUs (better stability), FP16 otherwise
+        if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:
+            dtype = torch.bfloat16
+            logger.info("Using mixed precision training with BF16")
+        else:
+            dtype = torch.float16
+            logger.info("Using mixed precision training with FP16")
+        scaler = torch.cuda.amp.GradScaler(enabled=(dtype == torch.float16))
+    else:
+        dtype = torch.float32
+        scaler = None
+        logger.info("Using full precision (FP32) training")
     
     # Use AdamW optimizer with weight_decay parameter
     optimizer_name = args.get("optimizer", "adamw").lower()
@@ -127,6 +225,19 @@ def trainModel(args):
     # Run #3: Linear warmup → cosine decay
     warmup_steps = args.get("warmup_steps", 1000)
     cosine_steps = args.get("cosine_T_max", args["nBatch"] - warmup_steps)
+    
+    # Log optimizer and scheduler settings
+    logger.info("=" * 80)
+    logger.info("Training Configuration")
+    logger.info("=" * 80)
+    logger.info(f"Optimizer: {optimizer_name.upper()}")
+    logger.info(f"Base LR: {args['lrStart']}, End LR: {args['lrEnd']}")
+    logger.info(f"Warmup steps: {warmup_steps}, Cosine steps: {cosine_steps}")
+    logger.info(f"Weight decay: {weight_decay}")
+    logger.info(f"Gradient clipping: max_norm=1.0")
+    logger.info(f"Augmentation - White noise SD: {args.get('whiteNoiseSD', 0.0)}")
+    logger.info(f"Augmentation - Constant offset SD: {args.get('constantOffsetSD', 0.0)}")
+    logger.info(f"Time masking - Prob: {args.get('time_mask_prob', 0.0)}, Width: {args.get('time_mask_width', 0)}, Max masks: {args.get('time_mask_max_masks', 1)}")
     
     # Use LambdaLR for warmup (more reliable than LinearLR with SequentialLR)
     # Warmup: linearly increase from 0 to lrStart over warmup_steps
@@ -153,59 +264,92 @@ def trainModel(args):
         schedulers=[warmup_scheduler, cosine_scheduler],
         milestones=[warmup_steps],
     )
+    
+    logger.info("=" * 80)
+    logger.info("Starting training loop")
+    logger.info("=" * 80)
 
     # --train--
     testLoss = []
-    testCER = []
+    testPER = []
     startTime = time.time()
     
-    # Run #3: Track moving average CER (over last 200 steps)
+    # Run #3: Track moving average PER (over last 200 steps)
     moving_avg_window = 200
-    cer_history = []
-    best_cer_ma = float('inf')
+    per_history = []
+    best_per_ma = float('inf')
+    
+    # Track gradient norms for debugging
+    grad_norms = []
+    loss_history = []
     
     # Metrics logging file
     metrics_file = os.path.join(args["outputDir"], "metrics.jsonl")
+    
+    # Speed optimization: Use proper iterator instead of next(iter()) each time
+    train_iter = iter(trainLoader)
+    
     for batch in range(args["nBatch"]):
         model.train()
 
-        X, y, X_len, y_len, dayIdx = next(iter(trainLoader))
+        try:
+            X, y, X_len, y_len, dayIdx = next(train_iter)
+        except StopIteration:
+            # Recreate iterator when exhausted
+            train_iter = iter(trainLoader)
+            X, y, X_len, y_len, dayIdx = next(train_iter)
+        
+        # Speed optimization: Use non_blocking transfers
         X, y, X_len, y_len, dayIdx = (
-            X.to(device),
-            y.to(device),
-            X_len.to(device),
-            y_len.to(device),
-            dayIdx.to(device),
+            X.to(device, non_blocking=True),
+            y.to(device, non_blocking=True),
+            X_len.to(device, non_blocking=True),
+            y_len.to(device, non_blocking=True),
+            dayIdx.to(device, non_blocking=True),
         )
 
         # Noise augmentation is faster on GPU
         if args["whiteNoiseSD"] > 0:
-            X += torch.randn(X.shape, device=device) * args["whiteNoiseSD"]
+            X += torch.randn(X.shape, device=device, dtype=X.dtype) * args["whiteNoiseSD"]
 
         if args["constantOffsetSD"] > 0:
             X += (
-                torch.randn([X.shape[0], 1, X.shape[2]], device=device)
+                torch.randn([X.shape[0], 1, X.shape[2]], device=device, dtype=X.dtype)
                 * args["constantOffsetSD"]
             )
 
-        # Compute prediction error
-        pred = model.forward(X, dayIdx)
+        # Speed optimization: Use mixed precision for forward pass
+        with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
+            # Compute prediction error
+            pred = model.forward(X, dayIdx)
 
-        loss = loss_ctc(
-            torch.permute(pred.log_softmax(2), [1, 0, 2]),
-            y,
-            ((X_len - model.kernelLen) / model.strideLen).to(torch.int32),
-            y_len,
-        )
-        loss = torch.sum(loss)
+            loss = loss_ctc(
+                torch.permute(pred.log_softmax(2), [1, 0, 2]),
+                y,
+                ((X_len - model.kernelLen) / model.strideLen).to(torch.int32),
+                y_len,
+            )
+            # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
 
-        # Backpropagation
+        # Backpropagation with mixed precision
         optimizer.zero_grad()
-        loss.backward()
-        # Run #3: Strong gradient clipping to prevent loss spikes
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        if scaler is not None:
+            scaler.scale(loss).backward()
+            # Run #3: Strong gradient clipping to prevent loss spikes
+            scaler.unscale_(optimizer)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            # Run #3: Strong gradient clipping to prevent loss spikes
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
         scheduler.step()  # Step scheduler after optimizer
+        
+        # Track metrics for debugging
+        loss_history.append(loss.item())
+        grad_norms.append(grad_norm.item())
 
         # print(endTime - startTime)
 
@@ -218,34 +362,32 @@ def trainModel(args):
                 total_seq_length = 0
                 for X, y, X_len, y_len, testDayIdx in testLoader:
                     X, y, X_len, y_len, testDayIdx = (
-                        X.to(device),
-                        y.to(device),
-                        X_len.to(device),
-                        y_len.to(device),
-                        testDayIdx.to(device),
+                        X.to(device, non_blocking=True),
+                        y.to(device, non_blocking=True),
+                        X_len.to(device, non_blocking=True),
+                        y_len.to(device, non_blocking=True),
+                        testDayIdx.to(device, non_blocking=True),
                     )
 
-                    pred = model.forward(X, testDayIdx)
-                    loss = loss_ctc(
-                        torch.permute(pred.log_softmax(2), [1, 0, 2]),
-                        y,
-                        ((X_len - model.kernelLen) / model.strideLen).to(torch.int32),
-                        y_len,
-                    )
-                    loss = torch.sum(loss)
+                    # Use mixed precision for eval too (faster, minimal accuracy impact)
+                    with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
+                        pred = model.forward(X, testDayIdx)
+                        loss = loss_ctc(
+                            torch.permute(pred.log_softmax(2), [1, 0, 2]),
+                            y,
+                            ((X_len - model.kernelLen) / model.strideLen).to(torch.int32),
+                            y_len,
+                        )
+                        # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
                     allLoss.append(loss.cpu().detach().numpy())
 
                     adjustedLens = ((X_len - model.kernelLen) / model.strideLen).to(
                         torch.int32
                     )
                     for iterIdx in range(pred.shape[0]):
-                        decodedSeq = torch.argmax(
-                            torch.tensor(pred[iterIdx, 0 : adjustedLens[iterIdx], :]),
-                            dim=-1,
-                        )  # [num_seq,]
-                        decodedSeq = torch.unique_consecutive(decodedSeq, dim=-1)
-                        decodedSeq = decodedSeq.cpu().detach().numpy()
-                        decodedSeq = np.array([i for i in decodedSeq if i != 0])
+                        # Use proper CTC greedy decode (same as eval.py)
+                        T_eff = int(adjustedLens[iterIdx].item())
+                        decodedSeq = ctc_greedy_decode(pred[iterIdx], T_eff)
 
                         trueSeq = np.array(
                             y[iterIdx][0 : y_len[iterIdx]].cpu().detach()
@@ -258,53 +400,117 @@ def trainModel(args):
                         total_seq_length += len(trueSeq)
 
                 avgDayLoss = np.sum(allLoss) / len(testLoader)
-                cer = total_edit_distance / total_seq_length
+                per = total_edit_distance / total_seq_length
 
-                # Run #3: Update moving average CER
-                cer_history.append(cer)
-                if len(cer_history) > moving_avg_window:
-                    cer_history.pop(0)
-                cer_ma = np.mean(cer_history) if cer_history else cer
+                # Run #3: Update moving average PER
+                per_history.append(per)
+                if len(per_history) > moving_avg_window:
+                    per_history.pop(0)
+                per_ma = np.mean(per_history) if per_history else per
 
                 endTime = time.time()
                 time_per_batch = (endTime - startTime) / 100
                 current_lr = scheduler.get_last_lr()[0]
-                print(
-                    f"batch {batch}, ctc loss: {avgDayLoss:>7f}, cer: {cer:>7f}, cer_ma: {cer_ma:>7f}, time/batch: {time_per_batch:>7.3f}, lr: {current_lr:.6f}"
+                
+                # Compute gradient and loss statistics
+                recent_grad_norms = grad_norms[-100:] if len(grad_norms) >= 100 else grad_norms
+                recent_losses = loss_history[-100:] if len(loss_history) >= 100 else loss_history
+                avg_grad_norm = np.mean(recent_grad_norms) if recent_grad_norms else 0.0
+                avg_train_loss = np.mean(recent_losses) if recent_losses else 0.0
+                max_grad_norm = np.max(recent_grad_norms) if recent_grad_norms else 0.0
+                
+                # Memory usage
+                if torch.cuda.is_available():
+                    memory_allocated = torch.cuda.memory_allocated(device) / 1e9  # GB
+                    memory_reserved = torch.cuda.memory_reserved(device) / 1e9  # GB
+                else:
+                    memory_allocated = memory_reserved = 0.0
+                
+                # Log detailed metrics
+                log_msg = (
+                    f"batch {batch:5d} | "
+                    f"loss: {avgDayLoss:>7.4f} (train: {avg_train_loss:>7.4f}) | "
+                    f"per: {per:>7.4f} (ma: {per_ma:>7.4f}) | "
+                    f"grad_norm: {avg_grad_norm:>6.4f} (max: {max_grad_norm:>6.4f}) | "
+                    f"lr: {current_lr:.6f} | "
+                    f"time: {time_per_batch:>5.2f}s | "
+                    f"mem: {memory_allocated:>4.2f}GB/{memory_reserved:>4.2f}GB"
                 )
+                logger.info(log_msg)
+                print(log_msg)  # Also print to console
                 
                 # Log metrics to JSONL file
                 metrics_entry = {
                     "step": batch,
                     "ctc_loss": float(avgDayLoss),
-                    "cer": float(cer),
-                    "cer_ma": float(cer_ma),
+                    "train_loss_avg": float(avg_train_loss),
+                    "per": float(per),
+                    "per_ma": float(per_ma),
+                    "grad_norm_avg": float(avg_grad_norm),
+                    "grad_norm_max": float(max_grad_norm),
                     "lr": float(current_lr),
                     "time_per_batch": float(time_per_batch),
+                    "memory_allocated_gb": float(memory_allocated),
+                    "memory_reserved_gb": float(memory_reserved),
                 }
+                
+                # Log sample predictions occasionally for debugging (first eval and every 1000 steps)
+                if batch == 0 or batch % 1000 == 0:
+                    # Get a sample from the test set
+                    sample_X, sample_y, sample_X_len, sample_y_len, sample_dayIdx = next(iter(testLoader))
+                    sample_X = sample_X[:1].to(device, non_blocking=True)
+                    sample_y = sample_y[:1].to(device, non_blocking=True)
+                    sample_X_len = sample_X_len[:1].to(device, non_blocking=True)
+                    sample_y_len = sample_y_len[:1].to(device, non_blocking=True)
+                    sample_dayIdx = sample_dayIdx[:1].to(device, non_blocking=True)
+                    
+                    with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
+                        sample_pred = model.forward(sample_X, sample_dayIdx)
+                    
+                    sample_T_eff = int(((sample_X_len[0] - model.kernelLen) / model.strideLen).item())
+                    sample_decoded = ctc_greedy_decode(sample_pred[0], sample_T_eff)
+                    sample_target = sample_y[0, :sample_y_len[0]].cpu().numpy()
+                    
+                    logger.info(f"Sample prediction (step {batch}):")
+                    logger.info(f"  Target length: {len(sample_target)}, Pred length: {len(sample_decoded)}")
+                    logger.info(f"  Target IDs (first 20): {sample_target[:20].tolist()}")
+                    logger.info(f"  Pred IDs (first 20): {sample_decoded[:20].tolist()}")
+                    matcher = SequenceMatcher(a=sample_target.tolist(), b=sample_decoded.tolist())
+                    sample_per = matcher.distance() / max(1, len(sample_target))
+                    logger.info(f"  Sample PER: {sample_per:.4f}")
+                    
+                    metrics_entry["sample_per"] = float(sample_per)
+                    metrics_entry["sample_target_len"] = int(len(sample_target))
+                    metrics_entry["sample_pred_len"] = int(len(sample_decoded))
                 with open(metrics_file, "a") as f:
                     f.write(json.dumps(metrics_entry) + "\n")
                 
                 startTime = time.time()
 
-            # Run #3: Save best checkpoint based on moving average CER
-            if cer_ma < best_cer_ma:
-                best_cer_ma = cer_ma
+            # Run #3: Save best checkpoint based on moving average PER
+            if per_ma < best_per_ma:
+                best_per_ma = per_ma
                 # Save best model checkpoint
                 torch.save(model.state_dict(), args["outputDir"] + "/modelWeights")
                 torch.save(model.state_dict(), os.path.join(args["outputDir"], "best_model.pt"))
+                logger.info(f"✓ New best checkpoint saved (PER_MA: {per_ma:.4f})")
             testLoss.append(avgDayLoss)
-            testCER.append(cer)
+            testPER.append(per)
 
             tStats = {}
             tStats["testLoss"] = np.array(testLoss)
-            tStats["testCER"] = np.array(testCER)
+            tStats["testPER"] = np.array(testPER)
 
             with open(args["outputDir"] + "/trainingStats", "wb") as file:
                 pickle.dump(tStats, file)
     
     # Save final model checkpoint
     torch.save(model.state_dict(), os.path.join(args["outputDir"], "final_model.pt"))
+    logger.info("=" * 80)
+    logger.info("Training completed!")
+    logger.info(f"Best PER (moving avg): {best_per_ma:.4f}")
+    logger.info(f"Final PER: {testPER[-1]:.4f}" if testPER else "N/A")
+    logger.info("=" * 80)
 
 
 def loadModel(modelDir, nInputLayers=24, device="cuda"):
@@ -312,12 +518,23 @@ def loadModel(modelDir, nInputLayers=24, device="cuda"):
     with open(modelDir + "/args", "rb") as handle:
         args = pickle.load(handle)
 
+    # Get nDays from saved args, or load from dataset if not present
+    n_days = args.get("nDays", None)
+    if n_days is None:
+        # Fallback: load from dataset
+        with open(args["datasetPath"], "rb") as f:
+            loaded_data = pickle.load(f)
+            n_days = len(loaded_data["train"])
+    # Use nInputLayers parameter if provided (for backward compatibility)
+    if nInputLayers != 24:
+        n_days = nInputLayers
+
     model = GRUDecoder(
         neural_dim=args["nInputFeatures"],
         n_classes=args["nClasses"],
         hidden_dim=args["nUnits"],
         layer_dim=args["nLayers"],
-        nDays=nInputLayers,
+        nDays=n_days,
         dropout=args["dropout"],
         device=device,
         strideLen=args["strideLen"],
