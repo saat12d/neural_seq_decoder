@@ -188,6 +188,90 @@ This document tracks each training run, what it tests, what changed, and the res
 
 ---
 
+## Run #8: `run8_recovery` (Baseline Recovery)
+
+**Purpose**: Revert to minimal baseline configuration to reproduce stability, then make one controlled change at a time.
+
+**Rationale**: After multiple runs with many changes, training became unstable. Need to go back to basics and verify we can reproduce baseline stability.
+
+**Changes from Run #7**:
+- **Optimizer**: AdamW → **Adam** (baseline used Adam)
+- **Weight decay**: 1e-4 → **0.0** (baseline had minimal/no weight decay)
+- **Gradient clipping**: 1.0 → **5.0** (baseline-style, less aggressive)
+- **AMP**: Enabled → **Disabled** (FP32 for stability)
+- **Dropout**: 0.3 → **0.4** (back to baseline)
+- **All augmentation**: Enabled → **Disabled** (white noise 0.0, offset 0.0, time masking 0.0)
+- **Adaptive LR**: Enabled → **Disabled** (baseline didn't have it)
+- **LR**: 0.0015 → **0.001** (constant, lower than baseline 0.02 which was too high)
+
+**Kept from improvements**:
+- **LayerNorm**: Enabled (helps stability, minimal change)
+- **Gradient clipping**: Enabled (baseline didn't have it, but we keep at 5.0 for safety)
+- **Speed optimizations**: num_workers=4, persistent_workers, pin_memory, non_blocking transfers
+
+**Configuration**:
+- `lrStart`: 0.001 (constant)
+- `lrEnd`: 0.001 (constant)
+- `optimizer`: 'adam'
+- `weight_decay`: 0.0
+- `grad_clip_norm`: 5.0
+- `use_amp`: False
+- `dropout`: 0.4
+- `use_layer_norm`: True
+- `whiteNoiseSD`: 0.0
+- `constantOffsetSD`: 0.0
+- `time_mask_prob`: 0.0
+- `adaptive_lr`: False
+
+**Expected Behavior**:
+- **Stable training** (no NaN, no explosions)
+- **PER should decrease steadily** from ~0.94
+- **Target**: Get below 0.35 PER, then iterate one change at a time
+
+**Next Steps (After Recovery)**:
+Once stable and ≤0.35 PER:
+1. **ReduceLROnPlateau** on PER (patience 8-12 evals, factor 0.5)
+2. **AdamW** with small weight decay (1e-4)
+3. **SpecAugment-lite** (time_mask_prob=0.05, width=15, max_masks=1)
+4. **Dropout sweep**: 0.3, 0.4, 0.5
+5. **AMP** (only after stability confirmed)
+
+---
+
+## Run #9: `run9_faster` (Speed Optimization)
+
+**Purpose**: Speed up learning while maintaining stability from Run #8.
+
+**Rationale**: Run #8 was too slow (PER 0.904 → 0.893 in 1200 steps). Need faster learning.
+
+**Changes from Run #8**:
+- **LR**: 0.001 → **0.0012** (20% higher, still safe)
+- **AMP**: Disabled → **Enabled** (~2x speedup, we know it works from Run #6)
+- **Dropout**: 0.4 → **0.35** (slightly less regularization for faster learning)
+- **Gradient clipping**: 5.0 → **1.0** (tighter, better for higher LR)
+
+**Kept from Run #8**:
+- Adam optimizer (stable)
+- No weight decay
+- No augmentation
+- LayerNorm enabled
+
+**Configuration**:
+- `lrStart`: 0.0012 (constant)
+- `lrEnd`: 0.0012 (constant)
+- `use_amp`: True
+- `dropout`: 0.35
+- `grad_clip_norm`: 1.0
+
+**Expected Behavior**:
+- **Faster learning** (PER should improve faster than Run #8)
+- **~2x faster training** (AMP enabled)
+- **Stable** (LR 0.0012 is still conservative, tighter clipping)
+
+**Target**: Beat Run #8's learning speed while maintaining stability.
+
+---
+
 ## Summary of Learnings
 
 ### What Works ✅
@@ -234,5 +318,5 @@ This document tracks each training run, what it tests, what changed, and the res
 
 ---
 
-**Last Updated**: Before Run #7
+**Last Updated**: Run #9 (Speed Optimization)
 

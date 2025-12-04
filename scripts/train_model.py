@@ -1,5 +1,5 @@
 
-modelName = 'gru_ctc_reg7'
+modelName = 'run9_faster'
 
 args = {}
 args['outputDir'] = f'/home/bciuser/projects/neural_seq_decoder/data/checkpoints/{modelName}'
@@ -7,44 +7,48 @@ args['datasetPath'] = '/home/bciuser/projects/neural_seq_decoder/data/formatted/
 args['seqLen'] = 150
 args['maxTimeSeriesLen'] = 1200
 args['batchSize'] = 64
-# Run #7: Constant LR at 0.0015 + Adaptive LR reduction (auto-reduces when instability detected)
-args['lrStart'] = 0.0015   # Start high for fast learning
-args['lrEnd'] = 0.0015     # Same as start (constant base)
-args['peak_lr'] = 0.0015   # Peak LR (same as constant)
-args['warmup_steps'] = 0   # No warmup - start at constant LR
-args['cosine_T_max'] = 10000  # Not used (constant LR), but set for compatibility
+
+# Run #9: Faster learning while maintaining stability
+# Changes from run8: Higher LR + AMP + slightly less dropout
+args['lrStart'] = 0.0012   # 20% higher than run8 (0.001 → 0.0012)
+args['lrEnd'] = 0.0012     # Constant LR
+args['peak_lr'] = 0.0012   # For compatibility
+args['warmup_steps'] = 0  # No warmup
+args['cosine_T_max'] = 10000  # Not used (constant LR)
+
 args['nUnits'] = 1024
-args['nBatch'] = 10000
 args['nLayers'] = 5
+args['nBatch'] = 10000
 args['seed'] = 0
 args['nClasses'] = 40
 args['nInputFeatures'] = 256
-args['dropout'] = 0.3  # Reduced from 0.4 to speed learning
-# Run #7: Reduced noise to speed learning
-args['whiteNoiseSD'] = 0.2  # Reduced from 0.4
-args['constantOffsetSD'] = 0.1
+
+# Architecture
+args['dropout'] = 0.35  # Slightly reduced from 0.4 (faster learning)
+args['use_layer_norm'] = True  # Keep LayerNorm (helps stability)
+args['input_dropout'] = 0.0  # No input dropout
+
+# Minimal augmentation (keep it simple)
+args['whiteNoiseSD'] = 0.0  # No noise
+args['constantOffsetSD'] = 0.0  # No offset
 args['gaussianSmoothWidth'] = 2.0
+args['time_mask_prob'] = 0.0  # No SpecAugment
+
 args['strideLen'] = 4
 args['kernelLen'] = 32
 args['bidirectional'] = True
-args['weight_decay'] = 1e-4
-args['optimizer'] = 'adamw'
 
-# Run #7: Keep LayerNorm, reduce input dropout
-args['use_layer_norm'] = True
-args['input_dropout'] = 0.1
+# Optimizer
+args['optimizer'] = 'adam'  # Keep Adam (stable)
+args['weight_decay'] = 0.0  # No weight decay
 
-# Run #7: Softer time masking - reduced width, allow 1-2 masks
-args['time_mask_prob'] = 0.10
-args['time_mask_width'] = 15
-args['time_mask_max_masks'] = 2
+# Speed + stability
+args['use_amp'] = True  # Enable AMP for ~2x speedup (we know it works)
+args['grad_clip_norm'] = 1.0  # Tighter clipping (better for higher LR)
+args['num_workers'] = 4
 
-# Run #7: Adaptive LR reduction (NEW - automatically reduces LR when instability detected)
-args['adaptive_lr'] = True  # Enable adaptive LR reduction
-args['lr_reduction_factor'] = 0.8  # Reduce LR by 20% each time (0.0015 → 0.0012 → 0.0010 → ...)
-args['lr_reduction_threshold'] = 10.0  # Reduce if grad_norm > this (even after clipping)
-args['min_lr'] = 0.0005  # Don't reduce below this (safety floor)
-args['max_lr_reductions'] = 5  # Maximum number of LR reductions (prevents over-reduction)
+# Disable adaptive LR (keep it simple)
+args['adaptive_lr'] = False
 
 from neural_decoder.neural_decoder_trainer import trainModel
 

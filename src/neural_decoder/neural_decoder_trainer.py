@@ -315,7 +315,8 @@ def trainModel(args):
     logger.info(f"Peak LR: {peak_lr} (capped), End LR: {args['lrEnd']}")
     logger.info(f"Warmup steps: {warmup_steps}, Cosine steps: {cosine_steps}")
     logger.info(f"Weight decay: {weight_decay}")
-    logger.info(f"Gradient clipping: max_norm=1.0")
+    grad_clip_norm = args.get("grad_clip_norm", 1.0)
+    logger.info(f"Gradient clipping: max_norm={grad_clip_norm}")
     adaptive_lr_enabled = args.get("adaptive_lr", True)
     if adaptive_lr_enabled:
         logger.info(f"Adaptive LR: ENABLED (reduce by {args.get('lr_reduction_factor', 0.8):.1%} if grad_norm > {args.get('lr_reduction_threshold', 10.0)} or NaN detected)")
@@ -384,13 +385,14 @@ def trainModel(args):
     skipped_updates = 0
     skipped_reasons = {"loss_nan": 0, "grad_nan": 0, "grad_norm_nan": 0}
     
-    # Run #6: Adaptive LR reduction
+    # Run #7: Adaptive LR reduction (with warmup period)
     adaptive_lr_enabled = args.get("adaptive_lr", True)
     lr_reduction_factor = args.get("lr_reduction_factor", 0.8)  # Reduce by 20%
-    lr_reduction_threshold = args.get("lr_reduction_threshold", 10.0)  # Reduce if grad_norm > this
+    lr_reduction_threshold = args.get("lr_reduction_threshold", 10.0)  # Reduce if grad_norm > this (AFTER clipping)
     min_lr = args.get("min_lr", 0.0005)  # Don't go below this
     lr_reductions = 0
     max_lr_reductions = args.get("max_lr_reductions", 5)  # Max number of reductions
+    adaptive_lr_warmup = args.get("adaptive_lr_warmup", 500)  # Disable adaptive LR for first N steps (high grads are normal)
     recent_skipped_window = 50  # Check skipped updates over last N steps
     recent_skipped_history = []  # Track skipped updates in recent window
     
@@ -483,7 +485,7 @@ def trainModel(args):
                 skipped_updates += 1
                 skipped_reasons["grad_nan"] += 1
                 logger.warning(f"Step {batch}: NaN/Inf gradients detected, skipping update (total skipped: {skipped_updates})")
-                # Run #6: Check adaptive LR reduction
+                # Run #7: Check adaptive LR reduction (NaN always triggers, even in warmup)
                 if adaptive_lr_enabled and lr_reductions < max_lr_reductions:
                     current_lr = optimizer.param_groups[0]['lr']
                     if current_lr > min_lr:
@@ -491,7 +493,7 @@ def trainModel(args):
                         for param_group in optimizer.param_groups:
                             param_group['lr'] = new_lr
                         lr_reductions += 1
-                        logger.warning(f"⚠️  ADAPTIVE LR REDUCTION #{lr_reductions}: NaN/Inf gradients detected")
+                        logger.warning(f"⚠️  ADAPTIVE LR REDUCTION #{lr_reductions}: NaN/Inf gradients detected (step {batch})")
                         logger.warning(f"   LR reduced: {current_lr:.6f} → {new_lr:.6f}")
                 # Zero grads to prevent accumulation
                 optimizer.zero_grad()
@@ -502,7 +504,8 @@ def trainModel(args):
                 grad_norms.append(float('inf'))  # Sentinel for skipped update
                 continue
             
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            # Clip gradients and get the clipped norm (this is what we use for tracking)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
             
             # Check if grad_norm is NaN/Inf after clipping
             if not torch.isfinite(grad_norm):
@@ -544,7 +547,7 @@ def trainModel(args):
                 skipped_updates += 1
                 skipped_reasons["grad_nan"] += 1
                 logger.warning(f"Step {batch}: NaN/Inf gradients detected, skipping update (total skipped: {skipped_updates})")
-                # Run #6: Check adaptive LR reduction
+                # Run #7: Check adaptive LR reduction (NaN always triggers, even in warmup)
                 if adaptive_lr_enabled and lr_reductions < max_lr_reductions:
                     current_lr = optimizer.param_groups[0]['lr']
                     if current_lr > min_lr:
@@ -552,7 +555,7 @@ def trainModel(args):
                         for param_group in optimizer.param_groups:
                             param_group['lr'] = new_lr
                         lr_reductions += 1
-                        logger.warning(f"⚠️  ADAPTIVE LR REDUCTION #{lr_reductions}: NaN/Inf gradients detected")
+                        logger.warning(f"⚠️  ADAPTIVE LR REDUCTION #{lr_reductions}: NaN/Inf gradients detected (step {batch})")
                         logger.warning(f"   LR reduced: {current_lr:.6f} → {new_lr:.6f}")
                 optimizer.zero_grad()  # Clear gradients
                 scheduler.step()
@@ -562,7 +565,7 @@ def trainModel(args):
                 continue
             
             # Run #3: Strong gradient clipping to prevent loss spikes
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip_norm)
             
             # Check if grad_norm is NaN/Inf after clipping
             if not torch.isfinite(grad_norm):
@@ -598,36 +601,34 @@ def trainModel(args):
             # Use a sentinel value to indicate skipped update
             grad_norms.append(float('inf'))
         
-        # Run #6: Adaptive LR reduction - check if we need to reduce LR
+        # Run #7: Adaptive LR reduction - check if we need to reduce LR (only after warmup, except for NaN)
+        # Note: grad_norm here is AFTER clipping (capped at 1.0), so we can't use it for threshold
+        # We only trigger on NaN/Inf or too many skipped updates
         if adaptive_lr_enabled and lr_reductions < max_lr_reductions:
             current_lr = optimizer.param_groups[0]['lr']
             should_reduce = False
             reduction_reason = ""
             
-            # Track recent skipped updates
-            if skipped_updates > 0:
-                recent_skipped_history.append(1)
-            else:
-                recent_skipped_history.append(0)
-            if len(recent_skipped_history) > recent_skipped_window:
-                recent_skipped_history.pop(0)
-            
-            # Condition 1: NaN/Inf gradients detected in this step
+            # Condition 1: NaN/Inf gradients detected (always check, even in warmup)
             if has_nan_grad or (grad_norm is not None and not torch.isfinite(grad_norm)):
                 should_reduce = True
                 reduction_reason = "NaN/Inf gradients detected"
             
-            # Condition 2: High gradient norm (even after clipping)
-            elif grad_norm is not None and torch.isfinite(grad_norm) and grad_norm.item() > lr_reduction_threshold:
-                should_reduce = True
-                reduction_reason = f"High gradient norm ({grad_norm.item():.2f} > {lr_reduction_threshold})"
-            
-            # Condition 3: Too many skipped updates in recent window
-            elif len(recent_skipped_history) >= recent_skipped_window:
-                recent_skipped_count = sum(recent_skipped_history)
-                if recent_skipped_count >= 3:  # 3+ skipped in last 50 steps
-                    should_reduce = True
-                    reduction_reason = f"Too many skipped updates ({recent_skipped_count} in last {recent_skipped_window} steps)"
+            # Condition 2: Too many skipped updates in recent window (only after warmup)
+            elif batch >= adaptive_lr_warmup:
+                # Track recent skipped updates
+                if skipped_updates > 0:
+                    recent_skipped_history.append(1)
+                else:
+                    recent_skipped_history.append(0)
+                if len(recent_skipped_history) > recent_skipped_window:
+                    recent_skipped_history.pop(0)
+                
+                if len(recent_skipped_history) >= recent_skipped_window:
+                    recent_skipped_count = sum(recent_skipped_history)
+                    if recent_skipped_count >= 3:  # 3+ skipped in last 50 steps
+                        should_reduce = True
+                        reduction_reason = f"Too many skipped updates ({recent_skipped_count} in last {recent_skipped_window} steps)"
             
             # Reduce LR if conditions met
             if should_reduce and current_lr > min_lr:
@@ -635,7 +636,7 @@ def trainModel(args):
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
                 lr_reductions += 1
-                logger.warning(f"⚠️  ADAPTIVE LR REDUCTION #{lr_reductions}: {reduction_reason}")
+                logger.warning(f"⚠️  ADAPTIVE LR REDUCTION #{lr_reductions}: {reduction_reason} (step {batch})")
                 logger.warning(f"   LR reduced: {current_lr:.6f} → {new_lr:.6f}")
                 # Reset recent skipped history after reduction
                 recent_skipped_history = []
