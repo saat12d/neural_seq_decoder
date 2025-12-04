@@ -45,65 +45,103 @@ def ctc_greedy_decode(logits, T_eff):
     return np.array(decoded, dtype=np.int32)
 
 
-def ctc_prefix_beam_search(logits, T_eff, beam_size=20, blank=0):
+def ctc_prefix_beam_search(log_probs, beam_size=20, blank=0):
     """
-    Prefix beam search for CTC decoding (better than greedy).
-    
+    Prefix beam search for CTC decoding with proper p_b / p_nb bookkeeping.
+
     Args:
-        logits: (T, C) tensor of logits
-        T_eff: effective time length
-        beam_size: beam width (default 20)
-        blank: blank token index (default 0)
-    
+        log_probs: (T, C) torch.Tensor or np.ndarray of log-probabilities over classes.
+        beam_size: beam width.
+        blank: index of the CTC blank symbol (default 0).
+
     Returns:
-        Best decoded sequence as numpy array
+        Numpy array of decoded token IDs (without blanks).
     """
-    if logits.ndim == 3:
-        logits = logits[0]
-    
-    # Convert to log probs
-    log_probs = logits[:T_eff].log_softmax(dim=-1).cpu().numpy()  # (T, C)
+    # Ensure numpy array on CPU
+    if isinstance(log_probs, torch.Tensor):
+        log_probs = log_probs.detach().cpu().numpy()
+
     T, C = log_probs.shape
-    
-    # Initialize beam: (prefix, last_char, log_prob)
-    # prefix is a tuple of tokens
-    beam = [(tuple(), blank, 0.0)]  # Start with empty prefix, blank last char, log_prob=0
-    
+
+    # Beam represented as two dictionaries:
+    # p_b[prefix]: log p(prefix, last is blank)
+    # p_nb[prefix]: log p(prefix, last is non-blank)
+    p_b = {(): 0.0}
+    p_nb = {(): -np.inf}
+
     for t in range(T):
-        new_beam = {}
-        
-        for prefix, last_char, prefix_log_prob in beam:
-            # For each token in vocabulary
+        p_b_new = {}
+        p_nb_new = {}
+
+        # Set of all prefixes currently in the beam
+        prefixes = set(p_b.keys()) | set(p_nb.keys())
+
+        for prefix in prefixes:
+            pb = p_b.get(prefix, -np.inf)
+            pnb = p_nb.get(prefix, -np.inf)
+
+            # 1) Transition to blank: prefix stays the same
+            p_blank = log_probs[t, blank]
+            prev = p_b_new.get(prefix, -np.inf)
+            p_b_new[prefix] = np.logaddexp(
+                prev,
+                np.logaddexp(pb + p_blank, pnb + p_blank),
+            )
+
+            # 2) Transitions to non-blank labels
             for c in range(C):
-                char_log_prob = log_probs[t, c]
-                new_log_prob = prefix_log_prob + char_log_prob
-                
                 if c == blank:
-                    # Blank: extend prefix without adding token
-                    new_prefix = prefix
-                    new_last_char = blank
-                elif c == last_char:
-                    # Repeat: extend prefix without adding token (CTC collapse)
-                    new_prefix = prefix
-                    new_last_char = c
+                    continue
+
+                p_c = log_probs[t, c]
+
+                if len(prefix) > 0 and prefix[-1] == c:
+                    # If last label is the same as current, CTC collapses repeats
+                    # So we update the same prefix (not create a new one)
+                    # Only extend from blank to avoid double-counting
+                    prev_pnb_new = p_nb_new.get(prefix, -np.inf)
+                    p_nb_new[prefix] = np.logaddexp(prev_pnb_new, pb + p_c)
                 else:
-                    # New token: extend prefix
+                    # New character: create new prefix
                     new_prefix = prefix + (c,)
-                    new_last_char = c
-                
-                key = (new_prefix, new_last_char)
-                if key not in new_beam or new_log_prob > new_beam[key][2]:
-                    new_beam[key] = (new_prefix, new_last_char, new_log_prob)
-        
-        # Keep top beam_size hypotheses
-        beam = sorted(new_beam.values(), key=lambda x: x[2], reverse=True)[:beam_size]
-    
-    # Return best prefix
-    if beam:
-        best_prefix = beam[0][0]
-        return np.array(list(best_prefix), dtype=np.int32)
-    else:
-        return np.array([], dtype=np.int32)
+                    prev_pnb_new = p_nb_new.get(new_prefix, -np.inf)
+                    # Can come from both blank and non-blank
+                    p_nb_new[new_prefix] = np.logaddexp(
+                        prev_pnb_new,
+                        np.logaddexp(pb + p_c, pnb + p_c),
+                    )
+
+        # Prune to top beam_size prefixes by total probability
+        all_prefixes = set(p_b_new.keys()) | set(p_nb_new.keys())
+        scores = []
+        for prefix in all_prefixes:
+            pb = p_b_new.get(prefix, -np.inf)
+            pnb = p_nb_new.get(prefix, -np.inf)
+            p_total = np.logaddexp(pb, pnb)
+            scores.append((p_total, prefix))
+
+        scores.sort(key=lambda x: x[0], reverse=True)
+        top = scores[:beam_size]
+
+        # Reset beam to pruned set
+        p_b = {}
+        p_nb = {}
+        for _, prefix in top:
+            p_b[prefix] = p_b_new.get(prefix, -np.inf)
+            p_nb[prefix] = p_nb_new.get(prefix, -np.inf)
+
+    # Pick best prefix by total probability
+    best_prefix = ()
+    best_score = -np.inf
+    for prefix in set(p_b.keys()) | set(p_nb.keys()):
+        pb = p_b.get(prefix, -np.inf)
+        pnb = p_nb.get(prefix, -np.inf)
+        p_total = np.logaddexp(pb, pnb)
+        if p_total > best_score:
+            best_score = p_total
+            best_prefix = prefix
+
+    return np.array(best_prefix, dtype=np.int32)
 
 
 def getDatasetLoaders(
@@ -116,6 +154,9 @@ def getDatasetLoaders(
 
     def _padding(batch):
         X, y, X_lens, y_lens, days = zip(*batch)
+        # Padding value 0 is safe: CTC ignores padding beyond y_len
+        # For targets: padding is outside valid sequence length (y_len), so CTCLoss ignores it
+        # For inputs: padding doesn't affect CTC decoding (T_eff handles effective length)
         X_padded = pad_sequence(X, batch_first=True, padding_value=0)
         y_padded = pad_sequence(y, batch_first=True, padding_value=0)
 
@@ -193,7 +234,7 @@ def trainModel(args):
     torch.manual_seed(args["seed"])
     np.random.seed(args["seed"])
     device = "cuda"
-    
+
     # Log training configuration
     logger.info(f"Output directory: {args['outputDir']}")
     logger.info(f"Dataset path: {args['datasetPath']}")
@@ -236,7 +277,7 @@ def trainModel(args):
     logger.info(f"Layer norm: {args.get('use_layer_norm', False)}")
     logger.info(f"Bidirectional: {args['bidirectional']}")
     logger.info(f"Stride length: {args['strideLen']}, Kernel length: {args['kernelLen']}")
-    
+
     model = GRUDecoder(
         neural_dim=args["nInputFeatures"],
         n_classes=args["nClasses"],
@@ -273,9 +314,66 @@ def trainModel(args):
 
     loss_ctc = torch.nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)
     
+    # CTC decoding configuration
+    use_beam_search = args.get("use_beam_search", False)
+    beam_size = args.get("beam_size", 20)
+    
+    # CTC Plumbing Sanity Checks (validate CTC contract before training)
+    logger.info("=" * 80)
+    logger.info("CTC Sanity Checks")
+    logger.info("=" * 80)
+    assert loss_ctc.blank == 0, f"CTCLoss blank must be 0, got {loss_ctc.blank}"
+    logger.info(f"✓ CTCLoss blank index: {loss_ctc.blank}")
+    
+    # Sample a batch and verify label domain & lengths
+    with torch.no_grad():
+        X_sample, y_sample, X_len_sample, y_len_sample, d_sample = next(iter(trainLoader))
+        X_sample = X_sample.to(device)
+        y_sample = y_sample.to(device)
+        X_len_sample = X_len_sample.to(device)
+        y_len_sample = y_len_sample.to(device)
+        d_sample = d_sample.to(device)
+        
+        # Verify T_eff calculation
+        T_eff_sample = ((X_len_sample - args["kernelLen"]) // args["strideLen"]).clamp(min=1)
+        logger.info(f"✓ T_eff calculation verified (min={T_eff_sample.min().item()}, max={T_eff_sample.max().item()})")
+        
+        # Verify labels don't contain blanks (if blank=0, labels should be >= 1).
+        # IMPORTANT: CTCLoss ignores padding beyond y_len, so we must only check y[b, :y_len[b]].
+        has_blank_in_valid = False
+        for b in range(y_sample.size(0)):
+            Lb = int(y_len_sample[b].item())
+            if Lb <= 0:
+                continue
+            valid_slice = y_sample[b, :Lb]
+            if (valid_slice == 0).any().item():
+                has_blank_in_valid = True
+                break
+
+        if has_blank_in_valid:
+            logger.warning(
+                "⚠️  WARNING: Found blank (0) in *valid* labels (before padding). "
+                "CTC expects labels >= 1 when blank=0. If 0 is a real phone, "
+                "consider remapping labels (e.g., y = y + 1 and increase nClasses by 1)."
+            )
+        else:
+            logger.info("✓ Labels verified: no blanks found in valid label spans (all labels >= 1)")
+        
+        # Verify input/target length relationship
+        logger.info(f"✓ Input lengths: min={X_len_sample.min().item()}, max={X_len_sample.max().item()}")
+        logger.info(f"✓ Target lengths: min={y_len_sample.min().item()}, max={y_len_sample.max().item()}")
+        logger.info(f"✓ T_eff lengths: min={T_eff_sample.min().item()}, max={T_eff_sample.max().item()}")
+    
+    logger.info("=" * 80)
+    
     # Speed optimization: Mixed precision training (FP16/BF16)
     # Prefer BF16 for better stability (works on Ampere+ GPUs)
     use_amp = args.get("use_amp", True)  # Enable by default
+    auto_enable_amp = args.get("auto_enable_amp", False)  # Run #14: Auto-enable AMP
+    auto_amp_step = args.get("auto_amp_step", 1500)  # Step to check for auto-enable
+    auto_amp_per_threshold = args.get("auto_amp_per_threshold", 0.45)  # PER threshold for auto-enable
+    amp_auto_enabled = False  # Track if AMP was auto-enabled
+    
     if use_amp:
         # Check if BF16 is supported - test autocast directly
         dtype = torch.float16  # Default to FP16
@@ -415,12 +513,18 @@ def trainModel(args):
     logger.info(f"Augmentation - Constant offset SD: {args.get('constantOffsetSD', 0.0)}")
     logger.info(f"Time masking - Prob: {args.get('time_mask_prob', 0.0)}, Width: {args.get('time_mask_width', 0)}, Max masks: {args.get('time_mask_max_masks', 1)}")
     logger.info(f"Frequency masking - Prob: {args.get('freq_mask_prob', 0.0)}, Width: {args.get('freq_mask_width', 0)}, Max masks: {args.get('freq_mask_max_masks', 0)}")
-    use_beam_search = args.get("use_beam_search", False)
-    beam_size = args.get("beam_size", 20)
     if use_beam_search:
         logger.info(f"CTC Decoding: Prefix beam search (beam_size={beam_size})")
     else:
-        logger.info(f"CTC Decoding: Greedy")
+        logger.info("CTC Decoding: Greedy")
+    
+    # Run #14: Early stop guard variables (initialize for all schedulers)
+    early_stop_guard = args.get("early_stop_guard", False)
+    early_stop_step = args.get("early_stop_step", 1200)
+    early_stop_per_threshold = args.get("early_stop_per_threshold", 0.38)
+    early_stop_reduced_max_lr = args.get("early_stop_reduced_max_lr", 0.003)
+    early_stop_triggered = False
+    original_max_lr = None  # Will be set for OneCycleLR
     
     # Check if using ReduceLROnPlateau scheduler
     use_plateau_scheduler = args.get("use_plateau_scheduler", False)
@@ -438,6 +542,30 @@ def trainModel(args):
             verbose=True
         )
         logger.info(f"  Patience: {plateau_patience} evals, Factor: {plateau_factor}, Min LR: {plateau_min_lr}")
+    # Check if using OneCycleLR
+    elif args.get("use_onecycle", False):
+        max_lr = args.get("onecycle_max_lr", peak_lr)
+        pct_start = args.get("onecycle_pct_start", 0.1)  # 10% warmup
+        div_factor = args.get("onecycle_div_factor", 25.0)  # start_lr = max_lr / div_factor
+        final_div_factor = args.get("onecycle_final_div_factor", 1e3)  # end_lr = max_lr / final_div_factor
+        
+        # Run #14: Early stop guard - track original max_lr for potential reduction
+        original_max_lr = max_lr  # Set for OneCycleLR
+        
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=max_lr,
+            total_steps=args["nBatch"],
+            pct_start=pct_start,
+            anneal_strategy="cos",
+            div_factor=div_factor,
+            final_div_factor=final_div_factor,
+        )
+        logger.info(f"Using OneCycleLR scheduler:")
+        logger.info(f"  Max LR: {max_lr}, Start LR: {max_lr/div_factor:.6f}, End LR: {max_lr/final_div_factor:.6f}")
+        logger.info(f"  Warmup: {int(args['nBatch'] * pct_start)} steps ({pct_start*100:.1f}%)")
+        if early_stop_guard:
+            logger.info(f"  Early stop guard: Will reduce max_lr to {early_stop_reduced_max_lr} if PER > {early_stop_per_threshold} at step {early_stop_step}")
     # Check if using constant LR (no warmup, no decay)
     elif warmup_steps == 0 and abs(peak_lr - args["lrEnd"]) < 1e-6:
         # Constant LR - use a simple scheduler that does nothing
@@ -468,10 +596,10 @@ def trainModel(args):
         
         # Chain schedulers: warmup first, then cosine
         scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer,
+        optimizer,
             schedulers=[warmup_scheduler, cosine_scheduler],
             milestones=[warmup_steps],
-        )
+    )
     
     logger.info("=" * 80)
     logger.info("Starting training loop")
@@ -509,6 +637,12 @@ def trainModel(args):
     
     # Metrics logging file
     metrics_file = os.path.join(args["outputDir"], "metrics.jsonl")
+    
+    # Run #14: Beam search eval on subset (optional)
+    beam_search_eval = args.get("beam_search_eval", False)
+    beam_search_interval = args.get("beam_search_interval", 500)
+    beam_search_subset_size = args.get("beam_search_subset_size", 100)
+    beam_search_beam_size = args.get("beam_size", 10)
     
     # Speed optimization: Use proper iterator instead of next(iter()) each time
     train_iter = iter(trainLoader)
@@ -552,7 +686,7 @@ def trainModel(args):
             loss = loss_ctc(
                 torch.permute(pred.log_softmax(2), [1, 0, 2]),
                 y,
-                T_eff,
+                    T_eff,
                 y_len,
             )
             # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
@@ -704,10 +838,42 @@ def trainModel(args):
                 grad_norms.append(float('inf'))  # Sentinel for skipped update
                 continue
             
-            optimizer.step()
-        # Step scheduler after optimizer (skip for ReduceLROnPlateau - it steps on eval metrics)
+        optimizer.step()
+        # Step scheduler after optimizer
+        # OneCycleLR and step-based schedulers: step every batch
+        # ReduceLROnPlateau: step on eval metrics (handled in eval loop)
         if not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-            scheduler.step()  # Step scheduler after optimizer
+            scheduler.step()  # Step scheduler after optimizer (OneCycleLR needs this every batch)
+        
+        # Run #14: Auto-enable AMP at specified step if PER is below threshold
+        if auto_enable_amp and not use_amp and not amp_auto_enabled and batch == auto_amp_step:
+            # Check PER from last eval (if available)
+            if per_history:
+                current_per = per_history[-1] if per_history else float('inf')
+                if current_per < auto_amp_per_threshold:
+                    logger.info(f"🚀 Auto-enabling AMP at step {batch} (PER: {current_per:.4f} < {auto_amp_per_threshold})")
+                    use_amp = True
+                    amp_auto_enabled = True
+                    # Initialize AMP components
+                    if torch.cuda.is_available():
+                        # Try BF16 first, fallback to FP16
+                        try:
+                            if hasattr(torch.cuda, 'is_bf16_supported') and torch.cuda.is_bf16_supported():
+                                with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                                    test_tensor = torch.randn(1, device=device)
+                                dtype = torch.bfloat16
+                                logger.info("  Using BF16 (more stable)")
+                            else:
+                                dtype = torch.float16
+                                logger.info("  Using FP16")
+                        except Exception:
+                            dtype = torch.float16
+                            logger.info("  Using FP16 (BF16 not available)")
+                    else:
+                        dtype = torch.float16
+                    scaler = torch.cuda.amp.GradScaler(enabled=(dtype == torch.float16))
+                else:
+                    logger.info(f"  Skipping AMP auto-enable (PER: {current_per:.4f} >= {auto_amp_per_threshold})")
         
         # Track metrics for debugging
         loss_history.append(loss.item())
@@ -784,7 +950,7 @@ def trainModel(args):
                         loss = loss_ctc(
                             torch.permute(pred.log_softmax(2), [1, 0, 2]),
                             y,
-                            T_eff_batch,
+                                T_eff_batch,
                             y_len,
                         )
                         # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
@@ -793,17 +959,29 @@ def trainModel(args):
                     adjustedLens = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(
                         torch.int32
                     )
+                    
+                    # Decode using our pure-Python CTC prefix beam search or greedy
                     for iterIdx in range(pred.shape[0]):
-                        # Use beam search or greedy decode based on config
                         T_eff = int(adjustedLens[iterIdx].item())
                         if use_beam_search:
-                            decodedSeq = ctc_prefix_beam_search(pred[iterIdx], T_eff, beam_size=beam_size)
+                            # Use prefix beam search with proper CTC bookkeeping
+                            log_probs = pred[iterIdx, :T_eff].log_softmax(dim=-1)
+                            decodedSeq = ctc_prefix_beam_search(
+                                log_probs, beam_size=beam_size, blank=0
+                            )
                         else:
+                            # Greedy CTC decode (baseline)
                             decodedSeq = ctc_greedy_decode(pred[iterIdx], T_eff)
 
                         trueSeq = np.array(
                             y[iterIdx][0 : y_len[iterIdx]].cpu().detach()
                         )
+
+                        matcher = SequenceMatcher(
+                            a=trueSeq.tolist(), b=decodedSeq.tolist()
+                        )
+                        total_edit_distance += matcher.distance()
+                        total_seq_length += len(trueSeq)
 
                         matcher = SequenceMatcher(
                             a=trueSeq.tolist(), b=decodedSeq.tolist()
@@ -819,6 +997,61 @@ def trainModel(args):
                 if len(per_history) > moving_avg_window:
                     per_history.pop(0)
                 per_ma = np.mean(per_history) if per_history else per
+
+                # Run #14: Early stop guard for OneCycleLR - reduce max_lr if PER too high
+                if (args.get("use_onecycle", False) and early_stop_guard and original_max_lr is not None and
+                    not early_stop_triggered and batch == early_stop_step and per > early_stop_per_threshold):
+                    logger.warning(f"⚠️  EARLY STOP GUARD TRIGGERED: PER {per:.4f} > {early_stop_per_threshold} at step {batch}")
+                    logger.warning(f"   Reducing OneCycleLR max_lr from {original_max_lr} to {early_stop_reduced_max_lr}")
+                    # Recreate scheduler with reduced max_lr
+                    # Note: OneCycleLR doesn't support changing max_lr mid-training, so we'll adjust optimizer LR manually
+                    # This is a workaround - ideally we'd recreate the scheduler, but that's complex
+                    # Instead, we'll scale down the current LR and future steps
+                    current_lr = optimizer.param_groups[0]['lr']
+                    scale_factor = early_stop_reduced_max_lr / original_max_lr
+                    new_lr = current_lr * scale_factor
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] = new_lr
+                    logger.warning(f"   Scaled current LR: {current_lr:.6f} → {new_lr:.6f}")
+                    early_stop_triggered = True
+                
+                # Run #14: Optional beam search eval on subset every N steps
+                beam_per_subset = None
+                if beam_search_eval and batch % beam_search_interval == 0 and batch > 0:
+                    logger.info(f"🔍 Running beam search eval on {beam_search_subset_size} samples (step {batch})")
+                    with torch.no_grad():
+                        model.eval()
+                        beam_total_edit_distance = 0
+                        beam_total_seq_length = 0
+                        beam_eval_count = 0
+                        for X, y, X_len, y_len, testDayIdx in testLoader:
+                            if beam_eval_count >= beam_search_subset_size:
+                                break
+                            X, y, X_len, y_len, testDayIdx = (
+                                X.to(device, non_blocking=True),
+                                y.to(device, non_blocking=True),
+                                X_len.to(device, non_blocking=True),
+                                y_len.to(device, non_blocking=True),
+                                testDayIdx.to(device, non_blocking=True),
+                            )
+                            with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
+                                pred = model.forward(X, testDayIdx)
+                            adjustedLens = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
+                            for iterIdx in range(min(pred.shape[0], beam_search_subset_size - beam_eval_count)):
+                                T_eff = int(adjustedLens[iterIdx].item())
+                                log_probs = pred[iterIdx, :T_eff].log_softmax(dim=-1)
+                                decodedSeq = ctc_prefix_beam_search(
+                                    log_probs, beam_size=beam_search_beam_size, blank=0
+                                )
+                                trueSeq = np.array(y[iterIdx][0 : y_len[iterIdx]].cpu().detach())
+                                matcher = SequenceMatcher(a=trueSeq.tolist(), b=decodedSeq.tolist())
+                                beam_total_edit_distance += matcher.distance()
+                                beam_total_seq_length += len(trueSeq)
+                                beam_eval_count += 1
+                                if beam_eval_count >= beam_search_subset_size:
+                                    break
+                        beam_per_subset = beam_total_edit_distance / max(1, beam_total_seq_length)
+                        logger.info(f"  Beam search PER (subset): {beam_per_subset:.4f} (vs greedy PER: {per:.4f})")
 
                 # Step ReduceLROnPlateau scheduler if enabled (needs metric, not step count)
                 if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -885,6 +1118,8 @@ def trainModel(args):
                     "memory_allocated_gb": float(memory_allocated),
                     "memory_reserved_gb": float(memory_reserved),
                 }
+                if beam_per_subset is not None:
+                    metrics_entry["beam_per_subset"] = float(beam_per_subset)
                 
                 # Log sample predictions occasionally for debugging (first eval and every 1000 steps)
                 if batch == 0 or batch % 1000 == 0:

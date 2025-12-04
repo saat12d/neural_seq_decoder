@@ -26,7 +26,7 @@ def apply_time_mask(x_np, p=0.10, max_width=20, max_masks=1):
     for _ in range(max_masks):
         if np.random.rand() > p:
             continue  # Skip this mask, but try next one
-            
+        
         width = np.random.randint(1, min(max_width + 1, T))
         start = np.random.randint(0, T - width + 1)
         x_masked[start:start+width, :] = 0.0

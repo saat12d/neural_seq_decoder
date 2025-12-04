@@ -407,5 +407,50 @@ Once stable and ≤0.35 PER:
 
 ---
 
-**Last Updated**: Run #11 (Plateau Break)
+## Run #12: `run12_baseline_hybrid` (Hybrid Baseline + Modern Features)
+
+**Purpose**: Match baseline performance by using baseline LR + augmentation, while keeping modern improvements (LayerNorm, gradient clipping, SpecAugment)
+
+**Changes from Run #11**:
+- **Revert to baseline LR**: 0.02 (25x higher than Run #11's 0.0008)
+- **Use baseline optimizer**: Adam with l2_decay=1e-5 (not AdamW)
+- **Combine augmentations**: Baseline noise/offset (whiteNoiseSD=0.8, constantOffsetSD=0.2) + SpecAugment (time + frequency masking)
+- **Keep LayerNorm**: Enabled (helps stability with high LR)
+- **Keep gradient clipping**: 1.5 (critical for stability with LR=0.02)
+- **Remove LR scheduler**: Constant LR like baseline (no ReduceLROnPlateau)
+
+**Configuration**:
+- `optimizer`: 'adam' (baseline, not AdamW)
+- `lrStart`: 0.02 (baseline value, 25x higher than Run #11)
+- `lrEnd`: 0.02 (constant LR, baseline style)
+- `l2_decay`: 1e-5 (baseline value, very low weight decay)
+- `whiteNoiseSD`: 0.8 (baseline value, strong noise)
+- `constantOffsetSD`: 0.2 (baseline value, offset augmentation)
+- `time_mask_prob`: 0.10 (SpecAugment time masking)
+- `freq_mask_prob`: 0.10 (SpecAugment frequency masking)
+- `use_layer_norm`: True (kept for stability)
+- `grad_clip_norm`: 1.5 (critical for high LR stability)
+- `use_plateau_scheduler`: False (baseline didn't have LR scheduler)
+- `use_amp`: False (FP32 for stability)
+- All other settings same as Run #11
+
+**Expected Behavior**:
+- **Faster convergence**: High LR (0.02) should allow much faster learning
+- **Better generalization**: Hybrid augmentation (baseline noise + SpecAugment) should provide strong regularization
+- **Stability**: Gradient clipping + LayerNorm should prevent explosions that occurred in early runs
+- **Target: PER < 0.25** (closer to baseline ~20%)
+
+**Rationale**:
+- Baseline achieved 20.46% PER with LR=0.02, so we should match that
+- Combining baseline augmentation with SpecAugment should provide even better regularization
+- LayerNorm + gradient clipping should prevent the explosions we saw in Run #1-2
+- This is a "best of both worlds" approach: baseline's proven LR + modern stability features
+
+**Potential Risks**:
+- High LR (0.02) caused explosions in Run #1-2, but we now have gradient clipping + LayerNorm
+- Aggressive augmentation (noise + offset + SpecAugment) might be too much - monitor training
+
+---
+
+**Last Updated**: Run #12 (Baseline Hybrid)
 

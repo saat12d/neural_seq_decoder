@@ -43,9 +43,13 @@ class GRUDecoder(nn.Module):
         self.unfolder = torch.nn.Unfold(
             (self.kernelLen, 1), dilation=1, padding=0, stride=self.strideLen
         )
-        self.gaussianSmoother = GaussianSmoothing(
-            neural_dim, 20, self.gaussianSmoothWidth, dim=1
-        )
+        # Protect against sigma=0: use Identity if gaussianSmoothWidth <= 0
+        if self.gaussianSmoothWidth <= 0:
+            self.gaussianSmoother = nn.Identity()
+        else:
+            self.gaussianSmoother = GaussianSmoothing(
+                neural_dim, 20, self.gaussianSmoothWidth, dim=1
+            )
         self.dayWeights = torch.nn.Parameter(torch.randn(nDays, neural_dim, neural_dim))
         self.dayBias = torch.nn.Parameter(torch.zeros(nDays, 1, neural_dim))
 
@@ -112,22 +116,9 @@ class GRUDecoder(nn.Module):
         )
 
         # apply RNN layer
-        if self.bidirectional:
-            h0 = torch.zeros(
-                self.layer_dim * 2,
-                x.size(0),
-                self.hidden_dim,
-                device=self.device,
-            ).requires_grad_()
-        else:
-            h0 = torch.zeros(
-                self.layer_dim,
-                x.size(0),
-                self.hidden_dim,
-                device=self.device,
-            ).requires_grad_()
-
-        hid, _ = self.gru_decoder(stridedInputs, h0.detach())
+        # Let PyTorch GRU handle zero initialization internally (don't create h0 manually)
+        # This is more efficient and avoids unnecessary gradient tracking
+        hid, _ = self.gru_decoder(stridedInputs)
 
         # get seq
         seq_out = self.fc_decoder_out(hid)

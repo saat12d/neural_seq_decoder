@@ -448,7 +448,46 @@ Once stable and ≤0.35 PER:
 
 ---
 
-**Last Updated**: Run #11 (Plateau Break)
-**Best PER Achieved**: 0.512 (step 4600, Run #6), 0.362 (step 4300, Run #10)
-**Baseline PER**: Unknown (need to check original repo results)
+---
+
+## Run #12: `run12_baseline_hybrid` - Hybrid Baseline + Modern Features
+
+**Purpose**: Match baseline performance by using baseline LR + augmentation, while keeping modern improvements.
+
+**Key Changes**:
+1. **Revert to Baseline LR**: Changed from 0.0008 → **0.02** (25x increase, baseline value)
+2. **Baseline Optimizer**: Switched from AdamW → **Adam** with `l2_decay=1e-5` (baseline style)
+3. **Hybrid Augmentation**: Combined baseline augmentation (whiteNoiseSD=0.8, constantOffsetSD=0.2) with SpecAugment (time + frequency masking)
+4. **Keep Modern Features**: LayerNorm (stability), gradient clipping (1.5), SpecAugment
+5. **Remove LR Scheduler**: Constant LR like baseline (no ReduceLROnPlateau)
+
+**Configuration**:
+- `lrStart`: 0.02 (baseline value)
+- `lrEnd`: 0.02 (constant LR)
+- `optimizer`: 'adam' (baseline, not AdamW)
+- `l2_decay`: 1e-5 (baseline value)
+- `whiteNoiseSD`: 0.8 (baseline value)
+- `constantOffsetSD`: 0.2 (baseline value)
+- `time_mask_prob`: 0.10 (SpecAugment)
+- `freq_mask_prob`: 0.10 (SpecAugment)
+- `use_layer_norm`: True (kept for stability)
+- `grad_clip_norm`: 1.5 (critical for high LR)
+- `use_plateau_scheduler`: False (baseline didn't have it)
+
+**Expected Outcome**:
+- **Faster convergence**: High LR should allow much faster learning
+- **Better generalization**: Hybrid augmentation should provide strong regularization
+- **Stability**: Gradient clipping + LayerNorm should prevent explosions
+- **Target: PER < 0.25** (closer to baseline ~20%)
+
+**Implementation Details**:
+- Same model architecture as Run #11
+- Same training loop, just different hyperparameters
+- Monitoring gradient norms closely (should stay < 10 with clipping)
+
+---
+
+**Last Updated**: Run #12 (Baseline Hybrid)
+**Best PER Achieved**: 0.512 (step 4600, Run #6), 0.362 (step 4300, Run #10), 0.283 (Run #11)
+**Baseline PER**: 20.46% (confirmed from speechBaseline4 evaluation)
 

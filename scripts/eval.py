@@ -22,6 +22,104 @@ def ctc_greedy_decode(logits, T_eff):
         prev = p
     return np.array(decoded, dtype=np.int32)
 
+def ctc_prefix_beam_search(log_probs, beam_size=20, blank=0):
+    """
+    Prefix beam search for CTC decoding with proper p_b / p_nb bookkeeping.
+    
+    Args:
+        log_probs: (T, C) torch.Tensor or np.ndarray of log-probabilities over classes.
+        beam_size: beam width.
+        blank: index of the CTC blank symbol (default 0).
+    
+    Returns:
+        Numpy array of decoded token IDs (without blanks).
+    """
+    # Ensure numpy array on CPU
+    if isinstance(log_probs, torch.Tensor):
+        log_probs = log_probs.detach().cpu().numpy()
+    
+    T, C = log_probs.shape
+    
+    # Beam represented as two dictionaries:
+    # p_b[prefix]: log p(prefix, last is blank)
+    # p_nb[prefix]: log p(prefix, last is non-blank)
+    p_b = {(): 0.0}
+    p_nb = {(): -np.inf}
+    
+    for t in range(T):
+        p_b_new = {}
+        p_nb_new = {}
+        
+        # Set of all prefixes currently in the beam
+        prefixes = set(p_b.keys()) | set(p_nb.keys())
+        
+        for prefix in prefixes:
+            pb = p_b.get(prefix, -np.inf)
+            pnb = p_nb.get(prefix, -np.inf)
+            
+            # 1) Transition to blank: prefix stays the same
+            p_blank = log_probs[t, blank]
+            prev = p_b_new.get(prefix, -np.inf)
+            p_b_new[prefix] = np.logaddexp(
+                prev,
+                np.logaddexp(pb + p_blank, pnb + p_blank),
+            )
+            
+            # 2) Transitions to non-blank labels
+            for c in range(C):
+                if c == blank:
+                    continue
+                
+                p_c = log_probs[t, c]
+                
+                if len(prefix) > 0 and prefix[-1] == c:
+                    # If last label is the same as current, CTC collapses repeats
+                    # So we update the same prefix (not create a new one)
+                    # Only extend from blank to avoid double-counting
+                    prev_pnb_new = p_nb_new.get(prefix, -np.inf)
+                    p_nb_new[prefix] = np.logaddexp(prev_pnb_new, pb + p_c)
+                else:
+                    # New character: create new prefix
+                    new_prefix = prefix + (c,)
+                    prev_pnb_new = p_nb_new.get(new_prefix, -np.inf)
+                    # Can come from both blank and non-blank
+                    p_nb_new[new_prefix] = np.logaddexp(
+                        prev_pnb_new,
+                        np.logaddexp(pb + p_c, pnb + p_c),
+                    )
+        
+        # Prune to top beam_size prefixes by total probability
+        all_prefixes = set(p_b_new.keys()) | set(p_nb_new.keys())
+        scores = []
+        for prefix in all_prefixes:
+            pb = p_b_new.get(prefix, -np.inf)
+            pnb = p_nb_new.get(prefix, -np.inf)
+            p_total = np.logaddexp(pb, pnb)
+            scores.append((p_total, prefix))
+        
+        scores.sort(key=lambda x: x[0], reverse=True)
+        top = scores[:beam_size]
+        
+        # Reset beam to pruned set
+        p_b = {}
+        p_nb = {}
+        for _, prefix in top:
+            p_b[prefix] = p_b_new.get(prefix, -np.inf)
+            p_nb[prefix] = p_nb_new.get(prefix, -np.inf)
+    
+    # Pick best prefix by total probability
+    best_prefix = ()
+    best_score = -np.inf
+    for prefix in set(p_b.keys()) | set(p_nb.keys()):
+        pb = p_b.get(prefix, -np.inf)
+        pnb = p_nb.get(prefix, -np.inf)
+        p_total = np.logaddexp(pb, pnb)
+        if p_total > best_score:
+            best_score = p_total
+            best_prefix = prefix
+    
+    return np.array(best_prefix, dtype=np.int32)
+
 def edit_distance(a, b):
     """Simple Levenshtein distance for small int sequences."""
     m, n = len(a), len(b)
@@ -59,6 +157,8 @@ def main():
     parser.add_argument("--split", choices=["test", "competition", "train"], default="test")
     parser.add_argument("--out", required=True, help="Path to write JSON metrics")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--use_beam_search", action="store_true", help="Use prefix beam search instead of greedy decoding")
+    parser.add_argument("--beam_size", type=int, default=20, help="Beam size for beam search (default: 20)")
     a = parser.parse_args()
 
     # 1) training hyperparams (to recreate model exactly)
@@ -142,8 +242,16 @@ def main():
 
             logits = model(X, dayIdx)  # (B, T', C) with CTC blank added internally
             T_eff = ((X_len - model.kernelLen) // model.strideLen).to(torch.int32)
+            T_eff_int = int(T_eff[0].item())
 
-            hyp = ctc_greedy_decode(logits[0], int(T_eff[0].item()))
+            if a.use_beam_search:
+                # Use prefix beam search
+                log_probs = logits[0, :T_eff_int].log_softmax(dim=-1)
+                hyp = ctc_prefix_beam_search(log_probs, beam_size=a.beam_size, blank=0)
+            else:
+                # Use greedy decoding
+                hyp = ctc_greedy_decode(logits[0], T_eff_int)
+            
             tgt = y[0, : y_len[0]].cpu().numpy()
 
             dist = edit_distance(hyp, tgt)
@@ -164,6 +272,8 @@ def main():
         "median_PER": float(np.median(per_list) if per_list else float("nan")),
         "sample_details": sample_details,
         "checkpoint": os.path.basename(picked) if picked else None,
+        "decoding_method": "beam_search" if a.use_beam_search else "greedy",
+        "beam_size": a.beam_size if a.use_beam_search else None,
     }
 
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
