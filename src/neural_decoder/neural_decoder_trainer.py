@@ -45,6 +45,67 @@ def ctc_greedy_decode(logits, T_eff):
     return np.array(decoded, dtype=np.int32)
 
 
+def ctc_prefix_beam_search(logits, T_eff, beam_size=20, blank=0):
+    """
+    Prefix beam search for CTC decoding (better than greedy).
+    
+    Args:
+        logits: (T, C) tensor of logits
+        T_eff: effective time length
+        beam_size: beam width (default 20)
+        blank: blank token index (default 0)
+    
+    Returns:
+        Best decoded sequence as numpy array
+    """
+    if logits.ndim == 3:
+        logits = logits[0]
+    
+    # Convert to log probs
+    log_probs = logits[:T_eff].log_softmax(dim=-1).cpu().numpy()  # (T, C)
+    T, C = log_probs.shape
+    
+    # Initialize beam: (prefix, last_char, log_prob)
+    # prefix is a tuple of tokens
+    beam = [(tuple(), blank, 0.0)]  # Start with empty prefix, blank last char, log_prob=0
+    
+    for t in range(T):
+        new_beam = {}
+        
+        for prefix, last_char, prefix_log_prob in beam:
+            # For each token in vocabulary
+            for c in range(C):
+                char_log_prob = log_probs[t, c]
+                new_log_prob = prefix_log_prob + char_log_prob
+                
+                if c == blank:
+                    # Blank: extend prefix without adding token
+                    new_prefix = prefix
+                    new_last_char = blank
+                elif c == last_char:
+                    # Repeat: extend prefix without adding token (CTC collapse)
+                    new_prefix = prefix
+                    new_last_char = c
+                else:
+                    # New token: extend prefix
+                    new_prefix = prefix + (c,)
+                    new_last_char = c
+                
+                key = (new_prefix, new_last_char)
+                if key not in new_beam or new_log_prob > new_beam[key][2]:
+                    new_beam[key] = (new_prefix, new_last_char, new_log_prob)
+        
+        # Keep top beam_size hypotheses
+        beam = sorted(new_beam.values(), key=lambda x: x[2], reverse=True)[:beam_size]
+    
+    # Return best prefix
+    if beam:
+        best_prefix = beam[0][0]
+        return np.array(list(best_prefix), dtype=np.int32)
+    else:
+        return np.array([], dtype=np.int32)
+
+
 def getDatasetLoaders(
     datasetName,
     batchSize,
@@ -66,12 +127,15 @@ def getDatasetLoaders(
             torch.stack(days),
         )
 
-    # Get time masking parameters from args if available
+    # Get augmentation parameters from args if available
     if args is None:
         args = {}
     time_mask_prob = args.get("time_mask_prob", 0.10)
     time_mask_width = args.get("time_mask_width", 20)
     time_mask_max_masks = args.get("time_mask_max_masks", 1)
+    freq_mask_prob = args.get("freq_mask_prob", 0.10)
+    freq_mask_width = args.get("freq_mask_width", 12)
+    freq_mask_max_masks = args.get("freq_mask_max_masks", 2)
     
     train_ds = SpeechDataset(
         loadedData["train"], 
@@ -79,7 +143,10 @@ def getDatasetLoaders(
         split="train",
         time_mask_prob=time_mask_prob,
         time_mask_width=time_mask_width,
-        time_mask_max_masks=time_mask_max_masks
+        time_mask_max_masks=time_mask_max_masks,
+        freq_mask_prob=freq_mask_prob,
+        freq_mask_width=freq_mask_width,
+        freq_mask_max_masks=freq_mask_max_masks
     )
     test_ds = SpeechDataset(loadedData["test"], split="test")
 
@@ -339,9 +406,32 @@ def trainModel(args):
     logger.info(f"Augmentation - White noise SD: {args.get('whiteNoiseSD', 0.0)}")
     logger.info(f"Augmentation - Constant offset SD: {args.get('constantOffsetSD', 0.0)}")
     logger.info(f"Time masking - Prob: {args.get('time_mask_prob', 0.0)}, Width: {args.get('time_mask_width', 0)}, Max masks: {args.get('time_mask_max_masks', 1)}")
+    logger.info(f"Frequency masking - Prob: {args.get('freq_mask_prob', 0.0)}, Width: {args.get('freq_mask_width', 0)}, Max masks: {args.get('freq_mask_max_masks', 0)}")
+    use_beam_search = args.get("use_beam_search", False)
+    beam_size = args.get("beam_size", 20)
+    if use_beam_search:
+        logger.info(f"CTC Decoding: Prefix beam search (beam_size={beam_size})")
+    else:
+        logger.info(f"CTC Decoding: Greedy")
     
+    # Check if using ReduceLROnPlateau scheduler
+    use_plateau_scheduler = args.get("use_plateau_scheduler", False)
+    if use_plateau_scheduler:
+        logger.info("Using ReduceLROnPlateau scheduler on validation PER")
+        plateau_patience = args.get("plateau_patience", 8)
+        plateau_factor = args.get("plateau_factor", 0.5)
+        plateau_min_lr = args.get("plateau_min_lr", 1e-5)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',  # Minimize PER
+            factor=plateau_factor,
+            patience=plateau_patience,
+            min_lr=plateau_min_lr,
+            verbose=True
+        )
+        logger.info(f"  Patience: {plateau_patience} evals, Factor: {plateau_factor}, Min LR: {plateau_min_lr}")
     # Check if using constant LR (no warmup, no decay)
-    if warmup_steps == 0 and abs(peak_lr - args["lrEnd"]) < 1e-6:
+    elif warmup_steps == 0 and abs(peak_lr - args["lrEnd"]) < 1e-6:
         # Constant LR - use a simple scheduler that does nothing
         logger.info("Using constant LR (no warmup, no decay)")
         scheduler = torch.optim.lr_scheduler.LambdaLR(
@@ -475,7 +565,9 @@ def trainModel(args):
                     lr_reductions += 1
                     logger.warning(f"⚠️  ADAPTIVE LR REDUCTION #{lr_reductions}: NaN/Inf loss detected")
                     logger.warning(f"   LR reduced: {current_lr:.6f} → {new_lr:.6f}")
-            scheduler.step()  # Still step scheduler to maintain schedule
+            # Step scheduler (skip for ReduceLROnPlateau - it steps on eval metrics)
+            if not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step()  # Still step scheduler to maintain schedule
             # Track metrics even on skip
             loss_history.append(loss.item())
             grad_norms.append(float('inf'))  # Sentinel for skipped update
@@ -605,7 +697,9 @@ def trainModel(args):
                 continue
             
             optimizer.step()
-        scheduler.step()  # Step scheduler after optimizer
+        # Step scheduler after optimizer (skip for ReduceLROnPlateau - it steps on eval metrics)
+        if not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            scheduler.step()  # Step scheduler after optimizer
         
         # Track metrics for debugging
         loss_history.append(loss.item())
@@ -692,9 +786,12 @@ def trainModel(args):
                         torch.int32
                     )
                     for iterIdx in range(pred.shape[0]):
-                        # Use proper CTC greedy decode (same as eval.py)
+                        # Use beam search or greedy decode based on config
                         T_eff = int(adjustedLens[iterIdx].item())
-                        decodedSeq = ctc_greedy_decode(pred[iterIdx], T_eff)
+                        if use_beam_search:
+                            decodedSeq = ctc_prefix_beam_search(pred[iterIdx], T_eff, beam_size=beam_size)
+                        else:
+                            decodedSeq = ctc_greedy_decode(pred[iterIdx], T_eff)
 
                         trueSeq = np.array(
                             y[iterIdx][0 : y_len[iterIdx]].cpu().detach()
@@ -715,9 +812,17 @@ def trainModel(args):
                     per_history.pop(0)
                 per_ma = np.mean(per_history) if per_history else per
 
+                # Step ReduceLROnPlateau scheduler if enabled (needs metric, not step count)
+                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(per)  # ReduceLROnPlateau needs the metric
+
                 endTime = time.time()
                 time_per_batch = (endTime - startTime) / 100
-                current_lr = scheduler.get_last_lr()[0]
+                # Get current LR (handle both step-based and metric-based schedulers)
+                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    current_lr = optimizer.param_groups[0]['lr']
+                else:
+                    current_lr = scheduler.get_last_lr()[0]
                 
                 # Compute gradient and loss statistics
                 recent_grad_norms = grad_norms[-100:] if len(grad_norms) >= 100 else grad_norms

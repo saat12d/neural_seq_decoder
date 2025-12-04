@@ -405,7 +405,50 @@ Once stable and ≤0.35 PER:
 
 ---
 
-**Last Updated**: Run #10 (Recovery with Speed Optimizations)
-**Best PER Achieved**: 0.512 (step 4600, Run #6)
+---
+
+## Run #11: `run11_plateau_break` (Break Through PER Plateau)
+
+**Goal**: Break through the ~36-38% PER plateau observed in Run #10
+
+**Key Changes**:
+1. **Prefix Beam Search**: Implemented `ctc_prefix_beam_search()` for evaluation (beam_size=20)
+   - Replaces greedy decoding in evaluation loop
+   - Expected 5-15% relative PER improvement
+2. **AdamW Optimizer**: Switched from Adam to AdamW (decoupled weight decay)
+   - `weight_decay: 1e-4` (standard for AdamW)
+   - Better regularization than L2 in Adam
+3. **ReduceLROnPlateau Scheduler**: Added scheduler on validation PER
+   - `patience: 8` evals (800 steps)
+   - `factor: 0.5` (reduce LR by 50%)
+   - `min_lr: 1e-5`
+   - Automatically reduces LR when PER plateaus
+4. **Full SpecAugment**: Added frequency masking alongside time masking
+   - Time masks: `prob=0.10`, `width=40`, `max_masks=2`
+   - Frequency masks: `prob=0.10`, `width=12`, `max_masks=2`
+   - Standard augmentation for speech recognition
+5. **Lower Base LR**: Reduced from 1e-3 to 8e-4
+   - Better convergence without instability
+   - Will be further reduced by scheduler if needed
+6. **Gradient Clipping**: Set to 1.5 (moderate, in 1.0-2.0 range)
+
+**Implementation Details**:
+- `src/neural_decoder/dataset.py`: Added `apply_frequency_mask()` function
+- `src/neural_decoder/neural_decoder_trainer.py`: 
+  - Added `ctc_prefix_beam_search()` function
+  - Updated scheduler setup to support ReduceLROnPlateau
+  - Updated evaluation to use beam search when enabled
+  - Updated dataset loader to pass frequency mask parameters
+
+**Expected Outcome**:
+- **PER improvement from beam search**: 5-15% relative reduction
+- **Plateau breaking**: ReduceLROnPlateau should reduce LR when PER stalls
+- **Better generalization**: SpecAugment should help without slowing training
+- **Target: PER < 0.30** (closer to baseline ~20%)
+
+---
+
+**Last Updated**: Run #11 (Plateau Break)
+**Best PER Achieved**: 0.512 (step 4600, Run #6), 0.362 (step 4300, Run #10)
 **Baseline PER**: Unknown (need to check original repo results)
 

@@ -359,5 +359,53 @@ Once stable and ≤0.35 PER:
 
 ---
 
-**Last Updated**: Run #10 (Recovery with Speed Optimizations)
+---
+
+## Run #11: `run11_plateau_break` (Break Through PER Plateau)
+
+**Purpose**: Break through the ~36-38% PER plateau observed in Run #10
+
+**Changes from Run #10**:
+- **Prefix beam search** for CTC decoding (beam_size=20) instead of greedy
+- **AdamW optimizer** (decoupled weight decay) instead of Adam
+- **Lower base LR**: 8e-4 (down from 1e-3)
+- **ReduceLROnPlateau scheduler** on validation PER (patience=8, factor=0.5, min_lr=1e-5)
+- **Full SpecAugment**: Time masking (prob=0.10, width=40, max_masks=2) + Frequency masking (prob=0.10, width=12, max_masks=2)
+- **Gradient clipping**: 1.5 (moderate, in 1.0-2.0 range)
+
+**Configuration**:
+- `optimizer`: 'adamw'
+- `lrStart`: 0.0008 (8e-4)
+- `lrEnd`: 0.0008 (will be reduced by scheduler)
+- `weight_decay`: 1e-4
+- `use_plateau_scheduler`: True
+- `plateau_patience`: 8
+- `plateau_factor`: 0.5
+- `plateau_min_lr`: 1e-5
+- `use_beam_search`: True
+- `beam_size`: 20
+- `time_mask_prob`: 0.10
+- `time_mask_width`: 40
+- `time_mask_max_masks`: 2
+- `freq_mask_prob`: 0.10
+- `freq_mask_width`: 12
+- `freq_mask_max_masks`: 2
+- `grad_clip_norm`: 1.5
+- All other settings same as Run #10
+
+**Expected Behavior**:
+- **Beam search should improve PER** by 5-15% relative to greedy
+- **ReduceLROnPlateau should break plateau** by reducing LR when PER stalls
+- **SpecAugment should improve generalization** without slowing training much
+- **Target: PER < 0.30** (closer to baseline ~20%)
+
+**Rationale**:
+- Beam search is standard for CTC and consistently beats greedy
+- ReduceLROnPlateau is a robust "safety net" when progress stalls
+- SpecAugment (time + freq masks) is standard for speech recognition
+- Lower LR (8e-4) should help convergence without instability
+
+---
+
+**Last Updated**: Run #11 (Plateau Break)
 
