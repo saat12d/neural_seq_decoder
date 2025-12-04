@@ -182,6 +182,14 @@ def trainModel(args):
     logger.info("Starting training run")
     logger.info("=" * 80)
     
+    # Log run metadata if available
+    if 'run_number' in args:
+        logger.info(f"Run Number: {args['run_number']}")
+    if 'run_name' in args:
+        logger.info(f"Run Name: {args['run_name']}")
+    if 'run_purpose' in args:
+        logger.info(f"Run Purpose: {args['run_purpose']}")
+    
     torch.manual_seed(args["seed"])
     np.random.seed(args["seed"])
     device = "cuda"

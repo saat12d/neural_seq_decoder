@@ -1,5 +1,20 @@
 
+# ============================================================================
+# Run #11: `run11_plateau_break` - Break Through PER Plateau
+# ============================================================================
+# Purpose: Break through the ~36-38% PER plateau observed in Run #10
+# 
+# Key Changes:
+# - Prefix beam search for CTC decoding (beam_size=20)
+# - AdamW optimizer with lower LR (8e-4)
+# - ReduceLROnPlateau scheduler on validation PER
+# - Full SpecAugment (time + frequency masking)
+# 
+# Target: PER < 0.30 (closer to baseline ~20%)
+# ============================================================================
+
 modelName = 'run11_plateau_break'
+run_number = 11  # Explicitly mark as Run #11
 
 args = {}
 args['outputDir'] = f'/home/bciuser/projects/neural_seq_decoder/data/checkpoints/{modelName}'
@@ -8,8 +23,10 @@ args['seqLen'] = 150
 args['maxTimeSeriesLen'] = 1200
 args['batchSize'] = 64
 
-# Run #11: Break through PER plateau with beam search, AdamW, ReduceLROnPlateau, and SpecAugment
-# Based on expert recommendations to break through ~36-38% PER plateau
+# Store run metadata
+args['run_number'] = run_number
+args['run_name'] = modelName
+args['run_purpose'] = 'Break through PER plateau with beam search, AdamW, ReduceLROnPlateau, and SpecAugment'
 args['lrStart'] = 0.0008   # Lower LR (8e-4) for better convergence
 args['lrEnd'] = 0.0008     # Same as start (will be reduced by ReduceLROnPlateau)
 args['peak_lr'] = 0.0008   # For compatibility
