@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from torch.utils.checkpoint import checkpoint
 
 from .augmentations import GaussianSmoothing
 
@@ -22,7 +21,6 @@ class GRUDecoder(nn.Module):
         bidirectional=False,
         use_layer_norm=False,
         input_dropout=0.0,
-        use_gradient_checkpointing=False,
     ):
         super(GRUDecoder, self).__init__()
 
@@ -39,7 +37,6 @@ class GRUDecoder(nn.Module):
         self.gaussianSmoothWidth = gaussianSmoothWidth
         self.bidirectional = bidirectional
         self.inputLayerNonlinearity = torch.nn.Softsign()
-        self.use_gradient_checkpointing = use_gradient_checkpointing
         
         # Layer normalization and input dropout for regularization
         self.ln = nn.LayerNorm(neural_dim) if use_layer_norm else nn.Identity()
@@ -133,46 +130,20 @@ class GRUDecoder(nn.Module):
         )
 
         # Speed optimization: Use pack_padded_sequence to skip padded tokens
-        # This speeds up GRU by avoiding computation on padding and saves memory
+        # This speeds up GRU by avoiding computation on padding
         # NOTE: pack_padded_sequence is incompatible with torch.compile (requires CPU tensors)
-        # We disable packing only when actively being compiled (during torch.compile tracing)
+        # When torch.compile is active, we skip packing and rely on compilation speedups instead
         use_packing = lengths is not None
-        if use_packing and hasattr(torch, '_dynamo'):
-            # Only disable packing during the actual compilation phase
-            # After compilation, we can use packing if torch.compile is disabled
+        if hasattr(torch, '_dynamo'):
+            # Check if we're being compiled - if so, disable packing
             try:
                 if torch._dynamo.is_compiling():
                     use_packing = False
-            except (AttributeError, RuntimeError, TypeError):
+            except (AttributeError, RuntimeError):
                 # If check fails, assume we're not compiling and allow packing
                 pass
         
-        # Use gradient checkpointing if enabled (trades compute for memory)
-        if self.use_gradient_checkpointing:
-            # Gradient checkpointing: recompute activations during backward pass
-            # This saves memory at the cost of extra forward passes
-            if use_packing:
-                # lengths should be CPU int64 for pack_padded_sequence
-                lengths_cpu = lengths.cpu().to(torch.int64)
-                # Pack sequences (sorts by length internally for efficiency)
-                packed = pack_padded_sequence(
-                    stridedInputs, 
-                    lengths=lengths_cpu, 
-                    batch_first=True, 
-                    enforce_sorted=False
-                )
-                # Use checkpointing for GRU forward pass
-                def gru_forward(packed_input):
-                    return self.gru_decoder(packed_input)
-                hid, _ = checkpoint(gru_forward, packed, use_reentrant=False)
-                # Unpack back to padded format
-                hid, _ = pad_packed_sequence(hid, batch_first=True)
-            else:
-                # Checkpointing for non-packed sequences
-                def gru_forward(input_seq):
-                    return self.gru_decoder(input_seq)
-                hid, _ = checkpoint(gru_forward, stridedInputs, use_reentrant=False)
-        elif use_packing:
+        if use_packing:
             # lengths should be CPU int64 for pack_padded_sequence
             lengths_cpu = lengths.cpu().to(torch.int64)
             # Pack sequences (sorts by length internally for efficiency)
