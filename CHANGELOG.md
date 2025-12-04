@@ -339,35 +339,73 @@ Once stable and ≤0.35 PER:
 
 ---
 
-## Run #9: `run9_faster` (Speed Optimization)
+## Run #9: `run9_clean_baseline` (Clean Baseline Fix)
 
-**Purpose**: Speed up learning while maintaining stability from Run #8.
+**Purpose**: Strip back to dead-simple baseline, fix T_eff calculation bug, ensure stable training.
 
-**Rationale**: Run #8 was too slow (PER 0.904 → 0.893 in 1200 steps). Need faster learning.
+**Rationale**: Expert analysis identified that model was outputting mostly blanks/tiny sequences (PER stuck in 0.9s). Root causes:
+1. T_eff calculation using float division (`/`) instead of floor division (`//`)
+2. T_eff not clamped to minimum 1
+3. AMP potentially hiding instability
+4. Need dead-simple optimizer/LR setup
+
+### Critical Fixes
+
+**T_eff Calculation Bug Fix**:
+- **Fixed**: Changed from `/` (float division) to `//` (floor division)
+- **Added**: `.clamp(min=1)` to ensure T_eff >= 1
+- **Applied in 3 places**: Training loop, eval loop, sample logging
+- **Impact**: Should fix blank-heavy outputs and improve PER calculation
 
 ### Configuration Changes
 
-**Speed improvements**:
-- **LR**: 0.001 → **0.0012** (20% higher, still safe)
-- **AMP**: Disabled → **Enabled** (~2x speedup, we know it works from Run #6)
-- **Dropout**: 0.4 → **0.35** (slightly less regularization for faster learning)
-- **Gradient clipping**: 5.0 → **1.0** (tighter, better for higher LR)
+**Dead-simple baseline**:
+- **LR**: Exactly **0.001** (1e-3), constant (no scheduler, no warmup)
+- **AMP**: **OFF** (until PER < 0.5, stability first)
+- **Gradient clipping**: **0.5** (tighter, as recommended)
+- **Dropout**: **0.4** (baseline value)
+- **Optimizer**: **Adam** (not AdamW)
+- **Weight decay**: **0.0** (no weight decay)
+- **All augmentation**: **OFF** (reproduce baseline)
 
-**Kept from Run #8**:
-- Adam optimizer (stable)
-- No weight decay
-- No augmentation
-- LayerNorm enabled
+**Kept**:
+- LayerNorm enabled (helps stability)
+- Speed optimizations (num_workers, persistent_workers, etc.)
 
 ### Expected Outcome
 
-- **Faster learning** (PER should improve faster than Run #8)
-- **~2x faster training** (AMP enabled)
-- **Stable** (LR 0.0012 is still conservative, tighter clipping)
+- **Stable training** (no NaN, no explosions)
+- **PER should decrease steadily** from ~0.94
+- **No more blank-heavy outputs** (T_eff fix should help)
+- **Target**: Get below 0.5 PER, then enable AMP and iterate
 
 ---
 
-**Last Updated**: Run #9 (Speed Optimization)
+---
+
+## Run #10: `run10_recovery` (Recovery with Speed Optimizations)
+
+**Purpose**: Same clean baseline as Run #9, but with speed optimizations enabled.
+
+**Changes from Run #9**:
+- **cuDNN benchmark**: Enabled (faster RNN operations, ~5-15% speedup)
+- **torch.compile**: Enabled (PyTorch 2.0+ model compilation, ~20-30% speedup)
+- **Expected combined speedup**: ~25-40% faster training
+
+**Configuration** (identical to Run #9):
+- Same clean baseline settings
+- T_eff calculation bug fixed
+- All speed optimizations enabled (no behavior changes)
+
+**Expected Outcome**:
+- **Same stability as Run #9** (no behavior changes)
+- **~25-40% faster training** (speed optimizations)
+- **PER should decrease steadily** from ~0.94
+- **No more blank-heavy outputs** (T_eff fix)
+
+---
+
+**Last Updated**: Run #10 (Recovery with Speed Optimizations)
 **Best PER Achieved**: 0.512 (step 4600, Run #6)
 **Baseline PER**: Unknown (need to check original repo results)
 

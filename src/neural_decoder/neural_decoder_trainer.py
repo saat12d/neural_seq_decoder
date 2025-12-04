@@ -178,6 +178,18 @@ def trainModel(args):
         input_dropout=args.get("input_dropout", 0.0),
     ).to(device)
     
+    # Speed optimization: Enable cuDNN benchmark for faster RNN operations
+    torch.backends.cudnn.benchmark = True
+    logger.info("Enabled cuDNN benchmark for faster training")
+    
+    # Speed optimization: Compile model for faster training (PyTorch 2.0+)
+    if hasattr(torch, 'compile'):
+        logger.info("Compiling model with torch.compile for faster training...")
+        model = torch.compile(model, mode='reduce-overhead')
+        logger.info("Model compilation complete")
+    else:
+        logger.info("torch.compile not available (requires PyTorch 2.0+)")
+    
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -284,11 +296,12 @@ def trainModel(args):
         )
     else:
         # Fallback to Adam for backward compatibility
+        # Baseline: eps should be default (1e-8), not 0.1 which is way too high
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=peak_lr,
             betas=(0.9, 0.999),
-            eps=0.1,
+            eps=1e-8,  # Fixed: baseline uses default eps, not 0.1
             weight_decay=weight_decay,
         )
     
@@ -436,10 +449,12 @@ def trainModel(args):
             # Compute prediction error
             pred = model.forward(X, dayIdx)
 
+            # T_eff: floor division with clamp(min=1) for CTC
+            T_eff = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
             loss = loss_ctc(
                 torch.permute(pred.log_softmax(2), [1, 0, 2]),
                 y,
-                ((X_len - model.kernelLen) / model.strideLen).to(torch.int32),
+                T_eff,
                 y_len,
             )
             # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
@@ -662,16 +677,18 @@ def trainModel(args):
                     # Use mixed precision for eval too (faster, minimal accuracy impact)
                     with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
                         pred = model.forward(X, testDayIdx)
+                        # T_eff: floor division with clamp(min=1) for CTC
+                        T_eff_batch = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
                         loss = loss_ctc(
                             torch.permute(pred.log_softmax(2), [1, 0, 2]),
                             y,
-                            ((X_len - model.kernelLen) / model.strideLen).to(torch.int32),
+                            T_eff_batch,
                             y_len,
                         )
                         # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
                     allLoss.append(loss.cpu().detach().numpy())
 
-                    adjustedLens = ((X_len - model.kernelLen) / model.strideLen).to(
+                    adjustedLens = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(
                         torch.int32
                     )
                     for iterIdx in range(pred.shape[0]):
@@ -769,7 +786,8 @@ def trainModel(args):
                     with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
                         sample_pred = model.forward(sample_X, sample_dayIdx)
                     
-                    sample_T_eff = int(((sample_X_len[0] - model.kernelLen) / model.strideLen).item())
+                    # T_eff: floor division with clamp(min=1) for CTC
+                    sample_T_eff = int(((sample_X_len[0] - model.kernelLen) // model.strideLen).clamp(min=1).item())
                     sample_decoded = ctc_greedy_decode(sample_pred[0], sample_T_eff)
                     sample_target = sample_y[0, :sample_y_len[0]].cpu().numpy()
                     
