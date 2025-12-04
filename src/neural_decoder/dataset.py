@@ -29,6 +29,8 @@ def apply_time_mask(x_np, p=0.10, max_width=20, max_masks=1):
         
         width = np.random.randint(1, min(max_width + 1, T))
         start = np.random.randint(0, T - width + 1)
+        if start + width > T:
+            width = T - start
         x_masked[start:start+width, :] = 0.0
     
     return x_masked

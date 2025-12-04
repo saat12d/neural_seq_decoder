@@ -217,8 +217,23 @@ def getDatasetLoaders(
 def trainModel(args):
     os.makedirs(args["outputDir"], exist_ok=True)
     
-    # Setup logging
+    # Setup logging first (needed for all subsequent log messages)
     logger = setup_logging(args["outputDir"])
+    
+    # Reduce verbosity of torch.compile logging (torch._dynamo and torch._inductor are very chatty)
+    import logging
+    logging.getLogger("torch._dynamo").setLevel(logging.WARNING)
+    logging.getLogger("torch._inductor").setLevel(logging.WARNING)
+    
+    # Speed optimization: Enable TF32 for faster FP32 matmuls (Ampere+ GPUs)
+    # TF32 gives ~1.5-3x faster matmuls with negligible accuracy loss
+    if torch.cuda.is_available():
+        try:
+            torch.set_float32_matmul_precision("high")  # Enables TF32 on Ampere+ (A100, RTX 30xx, etc.)
+            logger.info("Enabled TF32 for faster FP32 matmuls (Ampere+ GPUs)")
+        except AttributeError:
+            # Older PyTorch versions don't have this API
+            logger.info("TF32 not available (requires PyTorch 1.12+)")
     logger.info("=" * 80)
     logger.info("Starting training run")
     logger.info("=" * 80)
@@ -298,13 +313,52 @@ def trainModel(args):
     torch.backends.cudnn.benchmark = True
     logger.info("Enabled cuDNN benchmark for faster training")
     
+    # Memory optimization: Gradient checkpointing (trades compute for memory)
+    use_gradient_checkpointing = args.get("use_gradient_checkpointing", False)
+    if use_gradient_checkpointing:
+        logger.info("Gradient checkpointing enabled (saves memory, ~20% slower)")
+    
     # Speed optimization: Compile model for faster training (PyTorch 2.0+)
-    if hasattr(torch, 'compile'):
-        logger.info("Compiling model with torch.compile for faster training...")
-        model = torch.compile(model, mode='reduce-overhead')
-        logger.info("Model compilation complete")
+    # torch.compile can deliver meaningful speedups by fusing ops and optimizing graphs
+    # NOTE: When using torch.compile, pack_padded_sequence is automatically disabled
+    # to avoid compatibility issues. The compilation speedups compensate for this.
+    use_torch_compile = args.get("use_torch_compile", True)  # Enable by default
+    if use_torch_compile and hasattr(torch, 'compile'):
+        try:
+            # Check GPU capability - T4 and smaller GPUs benefit more from reduce-overhead
+            device_cap = torch.cuda.get_device_capability() if torch.cuda.is_available() else (0, 0)
+            device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "unknown"
+            
+            # T4 (compute 7.5) and smaller GPUs: use reduce-overhead
+            # A100/H100 (compute 8.0+): use max-autotune
+            if device_cap[0] >= 8 and "T4" not in device_name:
+                logger.info("Compiling model with torch.compile (mode=max-autotune) for faster training...")
+                logger.info("  Note: pack_padded_sequence disabled when using torch.compile")
+                model = torch.compile(model, mode="max-autotune")
+                logger.info("✓ Model compilation complete (max-autotune mode)")
+            else:
+                logger.info(f"Compiling model with torch.compile (mode=reduce-overhead) for {device_name}...")
+                if use_gradient_checkpointing:
+                    logger.info("  Note: Gradient checkpointing enabled to save memory with torch.compile")
+                else:
+                    logger.info("  Note: pack_padded_sequence disabled when using torch.compile")
+                model = torch.compile(model, mode="reduce-overhead")
+                logger.info("✓ Model compilation complete (reduce-overhead mode)")
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() or "OOM" in str(e):
+                logger.warning(f"torch.compile failed due to OOM ({e})")
+                logger.warning("  Consider: reducing batch size, disabling torch.compile, or freeing GPU memory")
+                logger.info("  Continuing without compilation...")
+                # Clear cache to free memory
+                torch.cuda.empty_cache()
+            else:
+                logger.warning(f"torch.compile failed ({e}), continuing without compilation")
+        except Exception as e:
+            logger.warning(f"torch.compile failed ({e}), continuing without compilation")
+    elif not use_torch_compile:
+        logger.info("torch.compile disabled (use_torch_compile=False)")
     else:
-        logger.info("torch.compile not available (requires PyTorch 2.0+)")
+        logger.info("torch.compile not available (requires PyTorch 2.0+). Consider upgrading for speedups.")
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
@@ -677,18 +731,18 @@ def trainModel(args):
             )
 
         # Speed optimization: Use mixed precision for forward pass
-        with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
-            # Compute prediction error
-            pred = model.forward(X, dayIdx)
+        # T_eff: floor division with clamp(min=1) for CTC (needed for pack_padded_sequence)
+        T_eff = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
 
-            # T_eff: floor division with clamp(min=1) for CTC
-            T_eff = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
-            loss = loss_ctc(
-                torch.permute(pred.log_softmax(2), [1, 0, 2]),
-                y,
+        with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
+            # Compute prediction error (pass T_eff for pack_padded_sequence optimization)
+            pred = model.forward(X, dayIdx, lengths=T_eff)
+        loss = loss_ctc(
+            torch.permute(pred.log_softmax(2), [1, 0, 2]),
+            y,
                     T_eff,
-                y_len,
-            )
+            y_len,
+        )
             # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
 
         # Backpropagation with mixed precision
@@ -942,15 +996,17 @@ def trainModel(args):
                         testDayIdx.to(device, non_blocking=True),
                     )
 
+                    # T_eff: floor division with clamp(min=1) for CTC (needed for pack_padded_sequence)
+                    T_eff_batch = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
+                    
                     # Use mixed precision for eval too (faster, minimal accuracy impact)
                     with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
-                        pred = model.forward(X, testDayIdx)
-                        # T_eff: floor division with clamp(min=1) for CTC
-                        T_eff_batch = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
+                        # Pass T_eff for pack_padded_sequence optimization
+                        pred = model.forward(X, testDayIdx, lengths=T_eff_batch)
                         loss = loss_ctc(
                             torch.permute(pred.log_softmax(2), [1, 0, 2]),
                             y,
-                                T_eff_batch,
+                            T_eff_batch,
                             y_len,
                         )
                         # CTCLoss with reduction="mean" already returns a scalar, no need for torch.sum()
@@ -1034,9 +1090,12 @@ def trainModel(args):
                                 y_len.to(device, non_blocking=True),
                                 testDayIdx.to(device, non_blocking=True),
                             )
-                            with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
-                                pred = model.forward(X, testDayIdx)
+                            # T_eff for pack_padded_sequence
                             adjustedLens = ((X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
+                            
+                            with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
+                                # Pass T_eff for pack_padded_sequence optimization
+                                pred = model.forward(X, testDayIdx, lengths=adjustedLens)
                             for iterIdx in range(min(pred.shape[0], beam_search_subset_size - beam_eval_count)):
                                 T_eff = int(adjustedLens[iterIdx].item())
                                 log_probs = pred[iterIdx, :T_eff].log_softmax(dim=-1)
@@ -1131,12 +1190,16 @@ def trainModel(args):
                     sample_y_len = sample_y_len[:1].to(device, non_blocking=True)
                     sample_dayIdx = sample_dayIdx[:1].to(device, non_blocking=True)
                     
-                    with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
-                        sample_pred = model.forward(sample_X, sample_dayIdx)
+                    # T_eff: floor division with clamp(min=1) for CTC (needed for pack_padded_sequence)
+                    sample_T_eff = ((sample_X_len - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
                     
-                    # T_eff: floor division with clamp(min=1) for CTC
-                    sample_T_eff = int(((sample_X_len[0] - model.kernelLen) // model.strideLen).clamp(min=1).item())
-                    sample_decoded = ctc_greedy_decode(sample_pred[0], sample_T_eff)
+                    with torch.cuda.amp.autocast(enabled=use_amp, dtype=dtype):
+                        # Pass T_eff for pack_padded_sequence optimization
+                        sample_pred = model.forward(sample_X, sample_dayIdx, lengths=sample_T_eff)
+                    
+                    # Convert to int for decoding
+                    sample_T_eff_int = int(sample_T_eff[0].item())
+                    sample_decoded = ctc_greedy_decode(sample_pred[0], sample_T_eff_int)
                     sample_target = sample_y[0, :sample_y_len[0]].cpu().numpy()
                     
                     logger.info(f"Sample prediction (step {batch}):")
@@ -1223,6 +1286,7 @@ def loadModel(modelDir, nInputLayers=24, device="cuda"):
         bidirectional=args["bidirectional"],
         use_layer_norm=args.get("use_layer_norm", False),
         input_dropout=args.get("input_dropout", 0.0),
+        use_gradient_checkpointing=args.get("use_gradient_checkpointing", False),
     ).to(device)
 
     model.load_state_dict(torch.load(modelWeightPath, map_location=device))

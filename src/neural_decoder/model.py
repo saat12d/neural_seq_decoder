@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.utils.checkpoint import checkpoint
 
 from .augmentations import GaussianSmoothing
 
@@ -20,6 +22,7 @@ class GRUDecoder(nn.Module):
         bidirectional=False,
         use_layer_norm=False,
         input_dropout=0.0,
+        use_gradient_checkpointing=False,
     ):
         super(GRUDecoder, self).__init__()
 
@@ -36,6 +39,7 @@ class GRUDecoder(nn.Module):
         self.gaussianSmoothWidth = gaussianSmoothWidth
         self.bidirectional = bidirectional
         self.inputLayerNonlinearity = torch.nn.Softsign()
+        self.use_gradient_checkpointing = use_gradient_checkpointing
         
         # Layer normalization and input dropout for regularization
         self.ln = nn.LayerNorm(neural_dim) if use_layer_norm else nn.Identity()
@@ -90,7 +94,20 @@ class GRUDecoder(nn.Module):
         else:
             self.fc_decoder_out = nn.Linear(hidden_dim, n_classes + 1)  # +1 for CTC blank
 
-    def forward(self, neuralInput, dayIdx):
+    def forward(self, neuralInput, dayIdx, lengths=None):
+        """
+        Forward pass through the GRU decoder.
+        
+        Args:
+            neuralInput: Input tensor of shape [B, T, F]
+            dayIdx: Day indices for per-day transformations
+            lengths: Optional sequence lengths (T_eff) for pack_padded_sequence.
+                    If None, uses full sequence length (no packing).
+                    Should be CPU int64 tensor of shape [B]
+        
+        Returns:
+            Output tensor of shape [B, T_out, n_classes+1]
+        """
         neuralInput = torch.permute(neuralInput, (0, 2, 1))
         neuralInput = self.gaussianSmoother(neuralInput)
         neuralInput = torch.permute(neuralInput, (0, 2, 1))
@@ -115,10 +132,63 @@ class GRUDecoder(nn.Module):
             (0, 2, 1),
         )
 
-        # apply RNN layer
-        # Let PyTorch GRU handle zero initialization internally (don't create h0 manually)
-        # This is more efficient and avoids unnecessary gradient tracking
-        hid, _ = self.gru_decoder(stridedInputs)
+        # Speed optimization: Use pack_padded_sequence to skip padded tokens
+        # This speeds up GRU by avoiding computation on padding and saves memory
+        # NOTE: pack_padded_sequence is incompatible with torch.compile (requires CPU tensors)
+        # We disable packing only when actively being compiled (during torch.compile tracing)
+        use_packing = lengths is not None
+        if use_packing and hasattr(torch, '_dynamo'):
+            # Only disable packing during the actual compilation phase
+            # After compilation, we can use packing if torch.compile is disabled
+            try:
+                if torch._dynamo.is_compiling():
+                    use_packing = False
+            except (AttributeError, RuntimeError, TypeError):
+                # If check fails, assume we're not compiling and allow packing
+                pass
+        
+        # Use gradient checkpointing if enabled (trades compute for memory)
+        if self.use_gradient_checkpointing:
+            # Gradient checkpointing: recompute activations during backward pass
+            # This saves memory at the cost of extra forward passes
+            if use_packing:
+                # lengths should be CPU int64 for pack_padded_sequence
+                lengths_cpu = lengths.cpu().to(torch.int64)
+                # Pack sequences (sorts by length internally for efficiency)
+                packed = pack_padded_sequence(
+                    stridedInputs, 
+                    lengths=lengths_cpu, 
+                    batch_first=True, 
+                    enforce_sorted=False
+                )
+                # Use checkpointing for GRU forward pass
+                def gru_forward(packed_input):
+                    return self.gru_decoder(packed_input)
+                hid, _ = checkpoint(gru_forward, packed, use_reentrant=False)
+                # Unpack back to padded format
+                hid, _ = pad_packed_sequence(hid, batch_first=True)
+            else:
+                # Checkpointing for non-packed sequences
+                def gru_forward(input_seq):
+                    return self.gru_decoder(input_seq)
+                hid, _ = checkpoint(gru_forward, stridedInputs, use_reentrant=False)
+        elif use_packing:
+            # lengths should be CPU int64 for pack_padded_sequence
+            lengths_cpu = lengths.cpu().to(torch.int64)
+            # Pack sequences (sorts by length internally for efficiency)
+            packed = pack_padded_sequence(
+                stridedInputs, 
+                lengths=lengths_cpu, 
+                batch_first=True, 
+                enforce_sorted=False
+            )
+            hid, _ = self.gru_decoder(packed)
+            # Unpack back to padded format
+            hid, _ = pad_packed_sequence(hid, batch_first=True)
+        else:
+            # Fallback: no packing (use full sequence)
+            # This is used when torch.compile is active or lengths not provided
+            hid, _ = self.gru_decoder(stridedInputs)
 
         # get seq
         seq_out = self.fc_decoder_out(hid)

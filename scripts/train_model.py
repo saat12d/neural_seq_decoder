@@ -24,7 +24,8 @@ args['outputDir'] = f'/home/bciuser/projects/neural_seq_decoder/data/checkpoints
 args['datasetPath'] = '/home/bciuser/projects/neural_seq_decoder/data/formatted/ptDecoder_ctc'
 args['seqLen'] = 150
 args['maxTimeSeriesLen'] = 1200
-args['batchSize'] = 64
+args['batchSize'] = 64  # Keep original batch size
+args['use_gradient_checkpointing'] = True  # Enable gradient checkpointing to save memory
 
 # Store run metadata
 args['run_number'] = run_number
