@@ -3,6 +3,7 @@ import pickle
 import time
 import json
 import logging
+import copy
 
 from edit_distance import SequenceMatcher
 import hydra
@@ -30,7 +31,36 @@ def setup_logging(output_dir):
 
 
 # ---------------------------
-# CTC decode helpers
+# EMA helper
+# ---------------------------
+class EMA:
+    def __init__(self, model, decay=0.999):
+        self.decay = float(decay)
+        self.shadow = {n: p.detach().clone() for n, p in model.named_parameters() if p.requires_grad}
+
+    @torch.no_grad()
+    def update(self, model):
+        d = self.decay
+        for n, p in model.named_parameters():
+            if p.requires_grad:
+                self.shadow[n].mul_(d).add_(p, alpha=1.0 - d)
+
+    @torch.no_grad()
+    def apply_to(self, model):
+        for n, p in model.named_parameters():
+            if p.requires_grad:
+                p.copy_(self.shadow[n])
+
+    def state_dict(self):
+        return {"decay": self.decay, "shadow": {k: v.clone() for k, v in self.shadow.items()}}
+
+    def load_state_dict(self, state):
+        self.decay = float(state["decay"])
+        self.shadow = {k: v.clone() for k, v in state["shadow"].items()}
+
+
+# ---------------------------
+# CTC greedy decode
 # ---------------------------
 def ctc_greedy_decode(logits, T_eff):
     """Greedy CTC decode with blank=0, collapse repeats, drop blanks."""
@@ -95,10 +125,48 @@ def getDatasetLoaders(datasetPath, batchSize, args):
 
 
 # ---------------------------
+# Eval (greedy-only, supports EMA weights)
+# ---------------------------
+@torch.no_grad()
+def evaluate_greedy(model, test_loader, loss_ctc, device):
+    model.eval()
+    total_ed, total_len = 0, 0
+    losses = []
+
+    for Xb, yb, Xlb, ylb, dayb in test_loader:
+        Xb = Xb.to(device, non_blocking=True)
+        yb = yb.to(device, non_blocking=True)
+        Xlb = Xlb.to(device, non_blocking=True)
+        ylb = ylb.to(device, non_blocking=True)
+        dayb = dayb.to(device, non_blocking=True)
+
+        T_eff_b = ((Xlb - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
+
+        # forward (always log_softmax in FP32 for stability)
+        pred_b = model(Xb, dayb, lengths=T_eff_b)
+        lp = pred_b.float().log_softmax(2)
+        l = loss_ctc(lp.permute(1, 0, 2), yb, T_eff_b, ylb)
+        losses.append(l.item())
+
+        # greedy decode -> PER
+        for i in range(pred_b.size(0)):
+            Te = int(T_eff_b[i].item())
+            dec = ctc_greedy_decode(pred_b[i], Te)
+            tgt = yb[i, : ylb[i]].detach().cpu().numpy()
+            m = SequenceMatcher(a=tgt.tolist(), b=dec.tolist())
+            total_ed += m.distance()
+            total_len += len(tgt)
+
+    eval_loss = float(np.mean(losses)) if losses else 0.0
+    per = (total_ed / max(1, total_len)) if total_len > 0 else 1.0
+    return eval_loss, per
+
+
+# ---------------------------
 # Training
 # ---------------------------
 def trainModel(args):
-    # Safer allocator flag set (avoid unsupported keys like expandable_segments)
+    # Safer allocator flag (avoid unsupported keys like expandable_segments)
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:512")
 
     logger = setup_logging(args["outputDir"])
@@ -215,7 +283,6 @@ def trainModel(args):
     # --- Precision (AMP) ---
     use_amp = bool(args.get("use_amp", True))
     if use_amp and torch.cuda.is_available():
-        # Prefer BF16 on Ampere+, else FP16 (T4)
         try:
             if hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported():
                 amp_dtype = torch.bfloat16
@@ -235,7 +302,7 @@ def trainModel(args):
     # --- Optimizer ---
     weight_decay = args.get("weight_decay", args.get("l2_decay", 1e-5))
     opt_name = args.get("optimizer", "adam").lower()
-    peak_lr = float(args.get("peak_lr", 0.0015))
+    peak_lr = float(args.get("peak_lr", 0.0016))
     if opt_name == "adamw":
         optimizer = torch.optim.AdamW(model.parameters(), lr=peak_lr, weight_decay=weight_decay)
     else:
@@ -244,7 +311,7 @@ def trainModel(args):
     # --- Scheduler: Warmup -> Cosine (no OneCycle) ---
     warmup_steps = int(args.get("warmup_steps", 1500))
     cosine_steps = int(args.get("cosine_T_max", args["nBatch"] - warmup_steps))
-    lr_end = float(args.get("lrEnd", 1e-5))
+    lr_end = float(args.get("lrEnd", 8e-6))
 
     def warmup_lambda(step):
         if step >= warmup_steps:
@@ -257,6 +324,13 @@ def trainModel(args):
         optimizer, schedulers=[warm, cos], milestones=[warmup_steps]
     )
 
+    # --- EMA (new) ---
+    use_ema = bool(args.get("use_ema", True))
+    ema_decay = float(args.get("ema_decay", 0.999))
+    ema = EMA(model, ema_decay) if use_ema else None
+    if use_ema:
+        logger.info(f"EMA enabled: decay={ema_decay}")
+
     logger.info("=" * 80)
     logger.info("Training Configuration")
     logger.info("=" * 80)
@@ -266,19 +340,21 @@ def trainModel(args):
     logger.info(f"Weight decay: {weight_decay}")
     grad_clip = float(args.get("grad_clip_norm", 1.0))
     logger.info(f"Gradient clipping: max_norm={grad_clip}")
-    logger.info("CTC Decoding: Greedy")
+    logger.info("CTC Decoding: Greedy (no beam)")
 
     # --- State & bookkeeping ---
     moving_window = int(args.get("per_ma_window", 200))
     per_hist = []
     best_per = float("inf")
     start_time = time.time()
-
     metrics_path = os.path.join(args["outputDir"], "metrics.jsonl")
     accumulation_steps = int(args.get("gradient_accumulation_steps", 1))
     if accumulation_steps > 1:
-        logger.info(f"Gradient accumulation: {accumulation_steps} steps "
-                    f"(effective batch size: {args['batchSize'] * accumulation_steps})")
+        logger.info(
+            f"Gradient accumulation: {accumulation_steps} steps "
+            f"(effective batch size: {args['batchSize'] * accumulation_steps})"
+        )
+    eval_every = int(args.get("eval_every", 100))
 
     train_iter = iter(train_loader)
 
@@ -290,14 +366,14 @@ def trainModel(args):
             train_iter = iter(train_loader)
             X, y, X_len, y_len, day = next(train_iter)
 
-        # Device transfer (non-blocking)
+        # Device transfer
         X = X.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
         X_len = X_len.to(device, non_blocking=True)
         y_len = y_len.to(device, non_blocking=True)
         day = day.to(device, non_blocking=True)
 
-        # Light additive noise (GPU-side)
+        # Light additive noise
         if args.get("whiteNoiseSD", 0) > 0:
             X = X + torch.randn_like(X) * args["whiteNoiseSD"]
         if args.get("constantOffsetSD", 0) > 0:
@@ -314,14 +390,13 @@ def trainModel(args):
         else:
             with torch.cuda.amp.autocast(enabled=True, dtype=amp_dtype):
                 pred = model(X, day, lengths=T_eff)
-                # compute log_softmax in FP32 for stability
                 log_probs = pred.float().log_softmax(2)
                 loss = loss_ctc(log_probs.permute(1, 0, 2), y, T_eff, y_len)
 
         if accumulation_steps > 1:
             loss = loss / accumulation_steps
 
-        # Backward
+        # Backward/step
         if scaler is None:
             if (step % accumulation_steps) == 0:
                 optimizer.zero_grad(set_to_none=True)
@@ -331,6 +406,8 @@ def trainModel(args):
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
+                if ema is not None:
+                    ema.update(model)
         else:
             if (step % accumulation_steps) == 0:
                 optimizer.zero_grad(set_to_none=True)
@@ -342,120 +419,115 @@ def trainModel(args):
                 scaler.update()
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
+                if ema is not None:
+                    ema.update(model)
 
-        # ---- Eval every 100 steps ----
-        if step % 100 == 0:
-            model.eval()
-            with torch.no_grad():
-                losses = []
-                total_ed, total_len = 0, 0
-                for Xb, yb, Xlb, ylb, dayb in test_loader:
-                    Xb = Xb.to(device, non_blocking=True)
-                    yb = yb.to(device, non_blocking=True)
-                    Xlb = Xlb.to(device, non_blocking=True)
-                    ylb = ylb.to(device, non_blocking=True)
-                    dayb = dayb.to(device, non_blocking=True)
+        # ---- Eval (greedy) ----
+        if step % eval_every == 0:
+            # snapshot current weights; optionally swap in EMA weights for eval
+            snapshot = copy.deepcopy(model.state_dict())
+            if ema is not None:
+                ema.apply_to(model)
 
-                    T_eff_b = ((Xlb - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
+            eval_loss, per = evaluate_greedy(model, test_loader, loss_ctc, device)
 
-                    if scaler is None:
-                        pred_b = model(Xb, dayb, lengths=T_eff_b)
-                        lp = pred_b.float().log_softmax(2)
-                        l = loss_ctc(lp.permute(1, 0, 2), yb, T_eff_b, ylb)
-                    else:
-                        with torch.cuda.amp.autocast(enabled=True, dtype=amp_dtype):
-                            pred_b = model(Xb, dayb, lengths=T_eff_b)
-                            lp = pred_b.float().log_softmax(2)
-                            l = loss_ctc(lp.permute(1, 0, 2), yb, T_eff_b, ylb)
-                    losses.append(l.item())
+            # restore training weights
+            model.load_state_dict(snapshot)
 
-                    # decode + PER
-                    for i in range(pred_b.size(0)):
-                        Te = int(T_eff_b[i].item())
-                        dec = ctc_greedy_decode(pred_b[i], Te)
-                        tgt = yb[i, : ylb[i]].detach().cpu().numpy()
-                        m = SequenceMatcher(a=tgt.tolist(), b=dec.tolist())
-                        total_ed += m.distance()
-                        total_len += len(tgt)
+            per_hist.append(per)
+            if len(per_hist) > moving_window:
+                per_hist.pop(0)
+            per_ma = float(np.mean(per_hist)) if per_hist else per
 
-                eval_loss = float(np.mean(losses)) if losses else 0.0
-                per = (total_ed / max(1, total_len)) if total_len > 0 else 1.0
+            elapsed = time.time() - start_time
+            time_per_batch = elapsed / max(1, eval_every)
+            start_time = time.time()
 
-                per_hist.append(per)
-                if len(per_hist) > moving_window:
-                    per_hist.pop(0)
-                per_ma = float(np.mean(per_hist)) if per_hist else per
+            try:
+                current_lr = scheduler.get_last_lr()[0]
+            except Exception:
+                current_lr = optimizer.param_groups[0]["lr"]
 
-                # Stats
-                elapsed = time.time() - start_time
-                time_per_batch = elapsed / 100.0
-                start_time = time.time()
+            if torch.cuda.is_available():
+                mem_alloc = torch.cuda.memory_allocated() / 1e9
+                mem_res = torch.cuda.memory_reserved() / 1e9
+            else:
+                mem_alloc = mem_res = 0.0
 
-                # current LR (works for SequentialLR)
-                try:
-                    current_lr = scheduler.get_last_lr()[0]
-                except Exception:
-                    current_lr = optimizer.param_groups[0]["lr"]
+            logger.info(
+                f"batch {step:5d} | loss: {eval_loss:7.4f} | "
+                f"per: {per:7.4f} (ma: {per_ma:7.4f}) | "
+                f"lr: {current_lr:.6f} | time/batch(avg): {time_per_batch:5.2f}s | "
+                f"mem: {mem_alloc:4.2f}GB/{mem_res:4.2f}GB"
+            )
 
-                # CUDA mem
-                if torch.cuda.is_available():
-                    mem_alloc = torch.cuda.memory_allocated() / 1e9
-                    mem_res = torch.cuda.memory_reserved() / 1e9
-                else:
-                    mem_alloc = mem_res = 0.0
-
-                logger.info(
-                    f"batch {step:5d} | loss: {eval_loss:7.4f} | "
-                    f"per: {per:7.4f} (ma: {per_ma:7.4f}) | "
-                    f"lr: {current_lr:.6f} | time: {time_per_batch:5.2f}s | "
-                    f"mem: {mem_alloc:4.2f}GB/{mem_res:4.2f}GB"
-                )
-
-                # Save best by actual PER
-                if per < best_per:
-                    best_per = per
+            # Save best by PER (EMA eval)
+            if per < best_per:
+                best_per = per
+                # save EMA weights if present; else current model weights
+                if ema is not None:
+                    ema.apply_to(model)
                     torch.save(model.state_dict(), os.path.join(args["outputDir"], "modelWeights"))
                     torch.save(model.state_dict(), os.path.join(args["outputDir"], "best_model.pt"))
-                    logger.info(f"✓ New best checkpoint saved (PER: {per:.4f})")
+                    # restore snapshot after saving
+                    model.load_state_dict(snapshot)
+                else:
+                    torch.save(model.state_dict(), os.path.join(args["outputDir"], "modelWeights"))
+                    torch.save(model.state_dict(), os.path.join(args["outputDir"], "best_model.pt"))
+                logger.info(f"✓ New best checkpoint saved (PER: {per:.4f})")
 
-                # metrics.jsonl
-                entry = {
-                    "step": step,
-                    "ctc_loss": eval_loss,
-                    "per": per,
-                    "per_ma": per_ma,
-                    "lr": current_lr,
-                    "time_per_batch": time_per_batch,
-                    "memory_allocated_gb": mem_alloc,
-                    "memory_reserved_gb": mem_res,
-                }
-                # Sample decode
-                if step in (0, 1000, 2000) and len(test_loader) > 0:
-                    Xs, ys, Xl, yl, dd = next(iter(test_loader))
-                    Xs = Xs[:1].to(device)
-                    ys = ys[:1].to(device)
-                    Xl = Xl[:1].to(device)
-                    yl = yl[:1].to(device)
-                    dd = dd[:1].to(device)
-                    Te = ((Xl - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
-                    with torch.cuda.amp.autocast(enabled=(scaler is not None), dtype=amp_dtype):
-                        pr = model(Xs, dd, lengths=Te)
-                    Tei = int(Te[0].item())
-                    dec = ctc_greedy_decode(pr[0], Tei)
-                    tgt = ys[0, : yl[0]].detach().cpu().numpy()
-                    m = SequenceMatcher(a=tgt.tolist(), b=dec.tolist())
-                    entry["sample_per"] = float(m.distance() / max(1, len(tgt)))
-                    entry["sample_target_len"] = int(len(tgt))
-                    entry["sample_pred_len"] = int(len(dec))
+            # metrics.jsonl
+            entry = {
+                "step": step,
+                "ctc_loss": eval_loss,
+                "per": per,
+                "per_ma": per_ma,
+                "lr": current_lr,
+                "time_per_batch": time_per_batch,
+                "memory_allocated_gb": mem_alloc,
+                "memory_reserved_gb": mem_res,
+            }
+            # Sample decode
+            try:
+                Xs, ys, Xl, yl, dd = next(iter(test_loader))
+                Xs = Xs[:1].to(device)
+                ys = ys[:1].to(device)
+                Xl = Xl[:1].to(device)
+                yl = yl[:1].to(device)
+                dd = dd[:1].to(device)
+                Te = ((Xl - model.kernelLen) // model.strideLen).clamp(min=1).to(torch.int32)
+                # eval under EMA for the sample too
+                snap2 = copy.deepcopy(model.state_dict())
+                if ema is not None:
+                    ema.apply_to(model)
+                pr = model(Xs, dd, lengths=Te)
+                if ema is not None:
+                    model.load_state_dict(snap2)
+                Tei = int(Te[0].item())
+                dec = ctc_greedy_decode(pr[0], Tei)
+                tgt = ys[0, : yl[0]].detach().cpu().numpy()
+                m = SequenceMatcher(a=tgt.tolist(), b=dec.tolist())
+                entry["sample_per"] = float(m.distance() / max(1, len(tgt)))
+                entry["sample_target_len"] = int(len(tgt))
+                entry["sample_pred_len"] = int(len(dec))
+            except Exception:
+                pass
 
-                with open(metrics_path, "a") as w:
-                    w.write(json.dumps(entry) + "\n")
+            with open(metrics_path, "a") as w:
+                w.write(json.dumps(entry) + "\n")
 
-    # Final save
-    torch.save(model.state_dict(), os.path.join(args["outputDir"], "final_model.pt"))
+    # Final save (EMA weights if enabled)
+    if ema is not None:
+        snap = copy.deepcopy(model.state_dict())
+        ema.apply_to(model)
+        torch.save(model.state_dict(), os.path.join(args["outputDir"], "final_model.pt"))
+        model.load_state_dict(snap)
+    else:
+        torch.save(model.state_dict(), os.path.join(args["outputDir"], "final_model.pt"))
+
     logger.info("=" * 80)
     logger.info("Training completed!")
-    logger.info(f"Best PER: {best_per:.4f}")
+    logger.info(f"Best PER (greedy, EMA-eval): {best_per:.4f}")
     logger.info("=" * 80)
 
 
