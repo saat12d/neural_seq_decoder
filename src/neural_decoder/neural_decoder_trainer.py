@@ -86,12 +86,41 @@ def _collate(batch):
 
 
 def getDatasetLoaders(datasetPath, batchSize, args):
+    """
+    Returns: train_loader, valid_loader, test_loader, data
+    - Uses 'valid' split if present.
+    - Otherwise, deterministically carves a few training days into validation.
+    """
     with open(datasetPath, "rb") as f:
         data = pickle.load(f)
 
+    rng = np.random.RandomState(args.get("seed", 0))
+    has_valid = "valid" in data and isinstance(data["valid"], list) and len(data["valid"]) > 0
+
+    if not has_valid:
+        # Carve validation by "days" from train (default ~2/24 ≈ 8%)
+        train_days_idx = list(range(len(data["train"])))
+        default_frac = 2 / max(1, len(train_days_idx) or 24)
+        val_frac = float(args.get("val_day_frac", default_frac))
+        n_val_days = int(max(1, round(len(train_days_idx) * val_frac)))
+        rng.shuffle(train_days_idx)
+        val_idx = set(train_days_idx[:n_val_days])
+        keep_idx = set(train_days_idx[n_val_days:])
+
+        carved_train = [data["train"][i] for i in sorted(keep_idx)]
+        carved_valid = [data["train"][i] for i in sorted(val_idx)]
+        data["train_carved"] = carved_train
+        data["valid_carved"] = carved_valid
+        train_key = "train_carved"
+        valid_key = "valid_carved"
+    else:
+        train_key = "train"
+        valid_key = "valid"
+
+    # Datasets
     train_ds = SpeechDataset(
-        data["train"],
-        transform=None,
+        data[train_key],
+        transform=None, 
         split="train",
         time_mask_prob=args.get("time_mask_prob", 0.0),
         time_mask_width=args.get("time_mask_width", 0),
@@ -100,6 +129,7 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         freq_mask_width=args.get("freq_mask_width", 0),
         freq_mask_max_masks=args.get("freq_mask_max_masks", 0),
     )
+    valid_ds = SpeechDataset(data[valid_key], split="valid")
     test_ds = SpeechDataset(data["test"], split="test")
 
     num_workers = args.get("num_workers", 4)
@@ -107,6 +137,15 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         train_ds,
         batch_size=batchSize,
         shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=num_workers > 0,
+        collate_fn=_collate,
+    )
+    valid_loader = DataLoader(
+        valid_ds,
+        batch_size=batchSize,
+        shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
         persistent_workers=num_workers > 0,
@@ -121,19 +160,19 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         persistent_workers=num_workers > 0,
         collate_fn=_collate,
     )
-    return train_loader, test_loader, data
+    return train_loader, valid_loader, test_loader, data
 
 
 # ---------------------------
 # Eval (greedy-only, supports EMA weights)
 # ---------------------------
 @torch.no_grad()
-def evaluate_greedy(model, test_loader, loss_ctc, device):
+def evaluate_greedy(model, loader, loss_ctc, device):
     model.eval()
     total_ed, total_len = 0, 0
     losses = []
 
-    for Xb, yb, Xlb, ylb, dayb in test_loader:
+    for Xb, yb, Xlb, ylb, dayb in loader:
         Xb = Xb.to(device, non_blocking=True)
         yb = yb.to(device, non_blocking=True)
         Xlb = Xlb.to(device, non_blocking=True)
@@ -199,15 +238,17 @@ def trainModel(args):
     logger.info(f"Total batches: {args['nBatch']}")
     logger.info(f"Seed: {args['seed']}")
 
-    train_loader, test_loader, loaded = getDatasetLoaders(
+    train_loader, valid_loader, test_loader, loaded = getDatasetLoaders(
         args["datasetPath"], args["batchSize"], args
     )
 
+    # nDays for per-day embeddings (use original 'train' length)
     n_days = len(loaded["train"])
     args["nDays"] = n_days
 
     logger.info(f"Dataset loaded: {n_days} training days")
     logger.info(f"Training samples: {len(train_loader.dataset)}")
+    logger.info(f"Validation samples: {len(valid_loader.dataset)}")
     logger.info(f"Test samples: {len(test_loader.dataset)}")
 
     with open(os.path.join(args["outputDir"], "args"), "wb") as f:
@@ -252,7 +293,7 @@ def trainModel(args):
     logger.info(f"Trainable parameters: {trainable_params:,}")
 
     loss_ctc = torch.nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)
-
+    
     # --- CTC sanity ---
     logger.info("=" * 80)
     logger.info("CTC Sanity Checks")
@@ -293,38 +334,49 @@ def trainModel(args):
         except Exception:
             amp_dtype = torch.float16
             logger.info("Using mixed precision FP16")
-        scaler = torch.cuda.amp.GradScaler(enabled=(amp_dtype == torch.float16))
+        scaler = torch.amp.GradScaler('cuda', enabled=(amp_dtype == torch.float16))
         logger.info("  Safety: log_softmax + CTCLoss computed in FP32")
     else:
         amp_dtype, scaler = torch.float32, None
         logger.info("Using full precision (FP32) training")
 
-    # --- Optimizer ---
+    # ---------------------------
+    # Optimizer
+    # ---------------------------
     weight_decay = args.get("weight_decay", args.get("l2_decay", 1e-5))
     opt_name = args.get("optimizer", "adam").lower()
-    peak_lr = float(args.get("peak_lr", 0.0016))
-    if opt_name == "adamw":
-        optimizer = torch.optim.AdamW(model.parameters(), lr=peak_lr, weight_decay=weight_decay)
-    else:
-        optimizer = torch.optim.Adam(model.parameters(), lr=peak_lr, betas=(0.9, 0.999), eps=1e-8, weight_decay=weight_decay)
+    peak_lr = float(args.get("peak_lr", 1.0e-3))  # ↓ slightly from 1.6e-3
+    adam_eps = float(args.get("adam_eps", 1e-6))  # ↑ from 1e-8 (more stable)
 
-    # --- Scheduler: Warmup -> Cosine (no OneCycle) ---
-    warmup_steps = int(args.get("warmup_steps", 1500))
-    cosine_steps = int(args.get("cosine_T_max", args["nBatch"] - warmup_steps))
-    lr_end = float(args.get("lrEnd", 8e-6))
+    if opt_name == "adamw":
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=peak_lr, weight_decay=weight_decay, eps=adam_eps, betas=(0.9, 0.999)
+        )
+    else:
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=peak_lr, weight_decay=weight_decay, eps=adam_eps, betas=(0.9, 0.999)
+        )
+
+    # ---------------------------
+    # Scheduler: Warmup -> CosineAnnealingWarmRestarts (SGDR)
+    # ---------------------------
+    from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingWarmRestarts
+
+    warmup_steps = int(args.get("warmup_steps", 1000))  # shorter warmup
+    lr_end = float(args.get("lrEnd", 1e-5))
+    sgdr_T0 = int(args.get("sgdr_T0", 3000))           # first cycle length
+    sgdr_Tmult = int(args.get("sgdr_Tmult", 2))        # cycle growth (must be integer >= 1)
 
     def warmup_lambda(step):
         if step >= warmup_steps:
             return 1.0
-        return float(step) / float(max(1, warmup_steps))
+        return float(step) / max(1, warmup_steps)
 
-    warm = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lambda)
-    cos = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cosine_steps, eta_min=lr_end)
-    scheduler = torch.optim.lr_scheduler.SequentialLR(
-        optimizer, schedulers=[warm, cos], milestones=[warmup_steps]
-    )
+    warm = LambdaLR(optimizer, lr_lambda=warmup_lambda)
+    sgdr = CosineAnnealingWarmRestarts(optimizer, T_0=sgdr_T0, T_mult=sgdr_Tmult, eta_min=lr_end)
+    use_sgdr = False  # flip after warmup
 
-    # --- EMA (new) ---
+    # --- EMA ---
     use_ema = bool(args.get("use_ema", True))
     ema_decay = float(args.get("ema_decay", 0.999))
     ema = EMA(model, ema_decay) if use_ema else None
@@ -336,9 +388,9 @@ def trainModel(args):
     logger.info("=" * 80)
     logger.info(f"Optimizer: {opt_name.upper()}")
     logger.info(f"Peak LR: {peak_lr} | End LR: {lr_end}")
-    logger.info(f"Warmup steps: {warmup_steps} | Cosine steps: {cosine_steps}")
+    logger.info(f"Warmup steps: {warmup_steps} | SGDR: T0={sgdr_T0}, Tmult={sgdr_Tmult}")
     logger.info(f"Weight decay: {weight_decay}")
-    grad_clip = float(args.get("grad_clip_norm", 1.0))
+    grad_clip = float(args.get("grad_clip_norm", 0.8))  # tighter clip
     logger.info(f"Gradient clipping: max_norm={grad_clip}")
     logger.info("CTC Decoding: Greedy (no beam)")
 
@@ -355,6 +407,8 @@ def trainModel(args):
             f"(effective batch size: {args['batchSize'] * accumulation_steps})"
         )
     eval_every = int(args.get("eval_every", 100))
+    log_grad_norm = bool(args.get("log_grad_norm", True))
+    last_grad_norm = float("nan")
 
     train_iter = iter(train_loader)
 
@@ -384,52 +438,90 @@ def trainModel(args):
 
         # Forward (AMP)
         if scaler is None:
+            if (step % accumulation_steps) == 0:
+                optimizer.zero_grad(set_to_none=True)
             pred = model(X, day, lengths=T_eff)
             log_probs = pred.float().log_softmax(2)
             loss = loss_ctc(log_probs.permute(1, 0, 2), y, T_eff, y_len)
+            if accumulation_steps > 1:
+                loss = loss / accumulation_steps
+            loss.backward()
+
+            # (optional) measure grad norm before clip
+            if log_grad_norm:
+                try:
+                    total_gn = 0.0
+                    for p in model.parameters():
+                        if p.grad is not None:
+                            total_gn += float(p.grad.data.norm(2).item())
+                    last_grad_norm = total_gn
+                except Exception:
+                    last_grad_norm = float("nan")
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
+
+            if ((step + 1) % accumulation_steps) == 0:
+                optimizer.step()
+                # schedule
+                if not use_sgdr:
+                    warm.step()
+                    if step + 1 >= warmup_steps:
+                        use_sgdr = True
+                else:
+                    # pass "epoch" as fractional steps since we're stepping per batch
+                    sgdr.step(step + 1 - warmup_steps)
+                optimizer.zero_grad(set_to_none=True)
+                if ema is not None:
+                    ema.update(model)
+
         else:
+            if (step % accumulation_steps) == 0:
+                optimizer.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=True, dtype=amp_dtype):
                 pred = model(X, day, lengths=T_eff)
                 log_probs = pred.float().log_softmax(2)
                 loss = loss_ctc(log_probs.permute(1, 0, 2), y, T_eff, y_len)
+                if accumulation_steps > 1:
+                    loss = loss / accumulation_steps
 
-        if accumulation_steps > 1:
-            loss = loss / accumulation_steps
-
-        # Backward/step
-        if scaler is None:
-            if (step % accumulation_steps) == 0:
-                optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
-            if ((step + 1) % accumulation_steps) == 0:
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad(set_to_none=True)
-                if ema is not None:
-                    ema.update(model)
-        else:
-            if (step % accumulation_steps) == 0:
-                optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
+
+            # unscale for proper clipping + norm
             scaler.unscale_(optimizer)
+            if log_grad_norm:
+                try:
+                    total_gn = 0.0
+                    for p in model.parameters():
+                        if p.grad is not None:
+                            total_gn += float(p.grad.data.norm(2).item())
+                    last_grad_norm = total_gn
+                except Exception:
+                    last_grad_norm = float("nan")
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
+
             if ((step + 1) % accumulation_steps) == 0:
                 scaler.step(optimizer)
                 scaler.update()
-                scheduler.step()
+                # schedule
+                if not use_sgdr:
+                    warm.step()
+                    if step + 1 >= warmup_steps:
+                        use_sgdr = True
+                else:
+                    sgdr.step(step + 1 - warmup_steps)
                 optimizer.zero_grad(set_to_none=True)
                 if ema is not None:
                     ema.update(model)
 
-        # ---- Eval (greedy) ----
+        # ---- Eval (greedy) on VALIDATION ONLY ----
         if step % eval_every == 0:
             # snapshot current weights; optionally swap in EMA weights for eval
             snapshot = copy.deepcopy(model.state_dict())
             if ema is not None:
                 ema.apply_to(model)
 
-            eval_loss, per = evaluate_greedy(model, test_loader, loss_ctc, device)
+            eval_loss, per = evaluate_greedy(model, valid_loader, loss_ctc, device)
 
             # restore training weights
             model.load_state_dict(snapshot)
@@ -443,10 +535,11 @@ def trainModel(args):
             time_per_batch = elapsed / max(1, eval_every)
             start_time = time.time()
 
+            # get current LR safely
             try:
-                current_lr = scheduler.get_last_lr()[0]
-            except Exception:
                 current_lr = optimizer.param_groups[0]["lr"]
+            except Exception:
+                current_lr = float("nan")
 
             if torch.cuda.is_available():
                 mem_alloc = torch.cuda.memory_allocated() / 1e9
@@ -454,14 +547,15 @@ def trainModel(args):
             else:
                 mem_alloc = mem_res = 0.0
 
+            gn_str = f" | gn(preclip): {last_grad_norm:.2f}" if log_grad_norm else ""
             logger.info(
                 f"batch {step:5d} | loss: {eval_loss:7.4f} | "
                 f"per: {per:7.4f} (ma: {per_ma:7.4f}) | "
                 f"lr: {current_lr:.6f} | time/batch(avg): {time_per_batch:5.2f}s | "
-                f"mem: {mem_alloc:4.2f}GB/{mem_res:4.2f}GB"
+                f"mem: {mem_alloc:4.2f}GB/{mem_res:4.2f}GB{gn_str}"
             )
 
-            # Save best by PER (EMA eval)
+            # Save best by validation PER (EMA eval)
             if per < best_per:
                 best_per = per
                 # save EMA weights if present; else current model weights
@@ -474,7 +568,7 @@ def trainModel(args):
                 else:
                     torch.save(model.state_dict(), os.path.join(args["outputDir"], "modelWeights"))
                     torch.save(model.state_dict(), os.path.join(args["outputDir"], "best_model.pt"))
-                logger.info(f"✓ New best checkpoint saved (PER: {per:.4f})")
+                logger.info(f"✓ New best checkpoint saved (val PER: {per:.4f})")
 
             # metrics.jsonl
             entry = {
@@ -486,10 +580,11 @@ def trainModel(args):
                 "time_per_batch": time_per_batch,
                 "memory_allocated_gb": mem_alloc,
                 "memory_reserved_gb": mem_res,
+                "eval_split": "valid",
             }
-            # Sample decode
+            # Sample decode from validation
             try:
-                Xs, ys, Xl, yl, dd = next(iter(test_loader))
+                Xs, ys, Xl, yl, dd = next(iter(valid_loader))
                 Xs = Xs[:1].to(device)
                 ys = ys[:1].to(device)
                 Xl = Xl[:1].to(device)
@@ -527,7 +622,7 @@ def trainModel(args):
 
     logger.info("=" * 80)
     logger.info("Training completed!")
-    logger.info(f"Best PER (greedy, EMA-eval): {best_per:.4f}")
+    logger.info(f"Best VAL PER (greedy, EMA-eval): {best_per:.4f}")
     logger.info("=" * 80)
 
 
