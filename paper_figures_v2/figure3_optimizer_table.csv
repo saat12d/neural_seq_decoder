@@ -1,0 +1,4 @@
+Run,Optimizer,Weight Decay,Schedule,Best Val PER,Test PER
+run10_recovery,Adam,1e-05,Constant,0.3585,N/A
+run11_plateau_break,Adam,1e-05,OneCycleLR,0.2863,0.2830
+run12_baseline_hybrid,Adam,1e-05,Constant,0.9626,N/A

@@ -1,0 +1,2 @@
+Run,Peak LR,End LR,Warmup,Cosine,Total Batches,EMA,Input Dropout,Batch (accum=2),Clip,Precision,Best Val PER,Test PER
+run16_5,0.001,1e-07,1500,18500,20000,0.9995,0.05,32,1.0,BF16,0.1995,0.5460

@@ -11,7 +11,7 @@
 # Goal: push greedy PER < 20% (no beam).
 # ============================================================================
 
-modelName = "run16_greedy_ema_warmcos"
+modelName = "run16_5"
 run_number = 16
 
 args = {}
@@ -39,15 +39,15 @@ args["l2_decay"] = 1e-5
 args["weight_decay"] = args["l2_decay"]
 
 # Warmup + Cosine params (tweaked vs run15)
-args["peak_lr"] = 0.0016
-args["lrEnd"] = 8e-6
+args["peak_lr"] = 0.0010
+args["lrEnd"] = 1e-7
 args["warmup_steps"] = 1500
-args["nBatch"] = 12000
+args["nBatch"] = 20000
 args["cosine_T_max"] = args["nBatch"] - args["warmup_steps"]  # auto-decay over remainder
 
 # EMA settings
 args["use_ema"] = True
-args["ema_decay"] = 0.999
+args["ema_decay"] = 0.9995
 
 # Model
 args["nUnits"] = 1024
@@ -57,26 +57,26 @@ args["nClasses"] = 40
 args["nInputFeatures"] = 256
 args["dropout"] = 0.4
 args["use_layer_norm"] = True
-args["input_dropout"] = 0.0
+args["input_dropout"] = 0.05
 args["strideLen"] = 4
 args["kernelLen"] = 32
 args["bidirectional"] = True
 args["gaussianSmoothWidth"] = 2.0
 
 # SpecAugment + light noise (same as run15)
-args["whiteNoiseSD"] = 0.2
+args["whiteNoiseSD"] = 0.15
 args["constantOffsetSD"] = 0.05
-args["time_mask_prob"] = 0.10
-args["time_mask_width"] = 40
+args["time_mask_prob"] = 0.08
+args["time_mask_width"] = 32
 args["time_mask_max_masks"] = 2
-args["freq_mask_prob"] = 0.10
-args["freq_mask_width"] = 12
+args["freq_mask_prob"] = 0.08
+args["freq_mask_width"] = 10
 args["freq_mask_max_masks"] = 2
 
 # Train loop knobs
 args["grad_clip_norm"] = 1.0
 args["num_workers"] = 4
-args["per_ma_window"] = 200
+args["per_ma_window"] = 300
 args["eval_every"] = 100  # keep tight eval cadence early
 
 from neural_decoder.neural_decoder_trainer import trainModel

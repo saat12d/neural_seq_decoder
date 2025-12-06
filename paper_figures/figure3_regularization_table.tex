@@ -1,0 +1,10 @@
+\begin{tabular}{llllll}
+\toprule
+Run & Clip & EMA Decay & Input Dropout & Best Valid PER & Step of Best \\
+\midrule
+speechBaseline4 & None & None & 0.0 & N/A & N/A \\
+run15_warmup_cosine_safe & 1.0 & None & 0.0 & 0.2690 & 9900 \\
+run16_greedy_ema_warmcos & 1.0 & 0.999 & 0.0 & 0.2174 & 3200 \\
+run16_4 & 1.0 & 0.9995 & 0.05 & 0.2139 & 5500 \\
+\bottomrule
+\end{tabular}
