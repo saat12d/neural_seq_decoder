@@ -10,7 +10,7 @@ import hydra
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split, random_split
 
 from .model import GRUDecoder
 from .dataset import SpeechDataset
@@ -89,7 +89,8 @@ def getDatasetLoaders(datasetPath, batchSize, args):
     with open(datasetPath, "rb") as f:
         data = pickle.load(f)
 
-    train_ds = SpeechDataset(
+    # Create full training dataset
+    full_train_ds = SpeechDataset(
         data["train"],
         transform=None,
         split="train",
@@ -100,6 +101,38 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         freq_mask_width=args.get("freq_mask_width", 0),
         freq_mask_max_masks=args.get("freq_mask_max_masks", 0),
     )
+    
+    # Split training data into train and validation
+    val_split_ratio = args.get("val_split_ratio", 0.1)  # Default 10% for validation
+    total_size = len(full_train_ds)
+    val_size = int(total_size * val_split_ratio)
+    train_size = total_size - val_size
+    
+    # Use random_split with generator for reproducibility
+    generator = torch.Generator()
+    generator.manual_seed(args.get("seed", 0))
+    train_subset, val_subset = random_split(
+        full_train_ds, [train_size, val_size], generator=generator
+    )
+    
+    # Create validation dataset without augmentation
+    # Create a separate dataset from the same data but with split="test" (no augmentation)
+    val_ds_raw = SpeechDataset(
+        data["train"],
+        transform=None,
+        split="test",  # No augmentation for validation
+        time_mask_prob=0.0,
+        time_mask_width=0,
+        time_mask_max_masks=0,
+        freq_mask_prob=0.0,
+        freq_mask_width=0,
+        freq_mask_max_masks=0,
+    )
+    # Use the same validation indices from the random split
+    val_ds = torch.utils.data.Subset(val_ds_raw, val_subset.indices)
+    
+    train_ds = train_subset
+    
     test_ds = SpeechDataset(data["test"], split="test")
 
     num_workers = args.get("num_workers", 4)
@@ -107,6 +140,15 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         train_ds,
         batch_size=batchSize,
         shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=num_workers > 0,
+        collate_fn=_collate,
+    )
+    val_loader = DataLoader(
+        val_ds_wrapped,
+        batch_size=batchSize,
+        shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
         persistent_workers=num_workers > 0,
@@ -121,7 +163,7 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         persistent_workers=num_workers > 0,
         collate_fn=_collate,
     )
-    return train_loader, test_loader, data
+    return train_loader, val_loader, test_loader, data
 
 
 # ---------------------------
@@ -199,7 +241,7 @@ def trainModel(args):
     logger.info(f"Total batches: {args['nBatch']}")
     logger.info(f"Seed: {args['seed']}")
 
-    train_loader, test_loader, loaded = getDatasetLoaders(
+    train_loader, val_loader, test_loader, loaded = getDatasetLoaders(
         args["datasetPath"], args["batchSize"], args
     )
 
@@ -208,6 +250,7 @@ def trainModel(args):
 
     logger.info(f"Dataset loaded: {n_days} training days")
     logger.info(f"Training samples: {len(train_loader.dataset)}")
+    logger.info(f"Validation samples: {len(val_loader.dataset)}")
     logger.info(f"Test samples: {len(test_loader.dataset)}")
 
     with open(os.path.join(args["outputDir"], "args"), "wb") as f:
@@ -429,7 +472,7 @@ def trainModel(args):
             if ema is not None:
                 ema.apply_to(model)
 
-            eval_loss, per = evaluate_greedy(model, test_loader, loss_ctc, device)
+            eval_loss, per = evaluate_greedy(model, val_loader, loss_ctc, device)
 
             # restore training weights
             model.load_state_dict(snapshot)
@@ -487,9 +530,9 @@ def trainModel(args):
                 "memory_allocated_gb": mem_alloc,
                 "memory_reserved_gb": mem_res,
             }
-            # Sample decode
+            # Sample decode (use validation set for sample predictions during training)
             try:
-                Xs, ys, Xl, yl, dd = next(iter(test_loader))
+                Xs, ys, Xl, yl, dd = next(iter(val_loader))
                 Xs = Xs[:1].to(device)
                 ys = ys[:1].to(device)
                 Xl = Xl[:1].to(device)

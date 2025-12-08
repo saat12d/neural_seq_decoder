@@ -162,4 +162,11 @@ cython_debug/
 # Data files
 data/raw/
 data/formatted/
-data/checkpoints/
+# Ignore checkpoints directory by default, but allow specific files
+# First, unignore the checkpoints directory itself
+!data/checkpoints/
+# Then ignore everything in it
+data/checkpoints/*
+# But allow eval JSON files and train.log files
+!data/checkpoints/*/eval*.json
+!data/checkpoints/*/train.log
