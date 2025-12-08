@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""
-Comprehensive plotting script for training checkpoint data.
-
-This script analyzes all run folders in data/checkpoints and creates various graphs:
-- CTC loss over time
-- PER (Phoneme Error Rate) over time
-- Train vs Test validation graphs
-- Learning rate schedules
-- Memory usage
-- Gradient norms
-- And more...
-
-Supports multiple data formats:
-- metrics.jsonl (step-by-step metrics)
-- trainingStats (pickle file with per-epoch stats)
-- eval_*.json (evaluation results)
-"""
 
 import os
 import sys
@@ -31,20 +14,16 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.figure import Figure
 
-# Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
 class CheckpointDataLoader:
-    """Loads and parses data from checkpoint directories."""
-    
     def __init__(self, checkpoint_dir: str):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.run_name = self.checkpoint_dir.name
         
     def load_metrics_jsonl(self) -> List[Dict[str, Any]]:
-        """Load metrics from metrics.jsonl file."""
         metrics_file = self.checkpoint_dir / "metrics.jsonl"
         if not metrics_file.exists():
             return []
@@ -60,7 +39,6 @@ class CheckpointDataLoader:
         return metrics
     
     def load_training_stats(self) -> Optional[Dict[str, np.ndarray]]:
-        """Load trainingStats pickle file."""
         stats_file = self.checkpoint_dir / "trainingStats"
         if not stats_file.exists():
             return None
@@ -68,7 +46,6 @@ class CheckpointDataLoader:
         try:
             with open(stats_file, 'rb') as f:
                 data = pickle.load(f)
-                # Ensure it's a dict with numpy arrays
                 if isinstance(data, dict):
                     return data
         except Exception as e:
@@ -76,7 +53,6 @@ class CheckpointDataLoader:
         return None
     
     def load_args(self) -> Optional[Dict[str, Any]]:
-        """Load training arguments from args pickle file."""
         args_file = self.checkpoint_dir / "args"
         if not args_file.exists():
             return None
@@ -89,7 +65,6 @@ class CheckpointDataLoader:
         return None
     
     def load_eval_results(self) -> Dict[str, Dict[str, Any]]:
-        """Load all eval_*.json files."""
         eval_results = {}
         for eval_file in self.checkpoint_dir.glob("eval_*.json"):
             try:
@@ -100,7 +75,6 @@ class CheckpointDataLoader:
         return eval_results
     
     def get_all_data(self) -> Dict[str, Any]:
-        """Load all available data from this checkpoint."""
         return {
             'run_name': self.run_name,
             'metrics': self.load_metrics_jsonl(),
@@ -111,7 +85,6 @@ class CheckpointDataLoader:
 
 
 class TrainingPlotter:
-    """Creates various plots from checkpoint data."""
     
     def __init__(self, output_dir: str = "plots"):
         self.output_dir = Path(output_dir)
@@ -120,7 +93,6 @@ class TrainingPlotter:
     def plot_ctc_loss(self, data_dicts: List[Dict[str, Any]], 
                      figsize: Tuple[int, int] = (12, 6),
                      save_path: Optional[str] = None) -> Figure:
-        """Plot CTC loss over training steps."""
         fig, ax = plt.subplots(figsize=figsize)
         
         for data in data_dicts:
@@ -155,7 +127,6 @@ class TrainingPlotter:
     def plot_per(self, data_dicts: List[Dict[str, Any]],
                 figsize: Tuple[int, int] = (12, 6),
                 save_path: Optional[str] = None) -> Figure:
-        """Plot PER (Phoneme Error Rate) over training steps."""
         fig, ax = plt.subplots(figsize=figsize)
         
         for data in data_dicts:
@@ -171,7 +142,6 @@ class TrainingPlotter:
             for entry in metrics:
                 if 'step' in entry:
                     steps.append(entry['step'])
-                    # Handle both 'per' and 'cer' fields (cer was used in older runs)
                     if 'per' in entry:
                         pers.append(entry['per'])
                     elif 'cer' in entry:
@@ -203,7 +173,6 @@ class TrainingPlotter:
     def plot_train_vs_test(self, data_dicts: List[Dict[str, Any]],
                           figsize: Tuple[int, int] = (14, 6),
                           save_path: Optional[str] = None) -> Figure:
-        """Plot train vs test metrics comparison."""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
         
         for data in data_dicts:
@@ -211,7 +180,6 @@ class TrainingPlotter:
             metrics = data.get('metrics', [])
             training_stats = data.get('training_stats')
             
-            # Plot from metrics.jsonl (test metrics during training)
             if metrics:
                 steps = []
                 test_losses = []
@@ -235,7 +203,6 @@ class TrainingPlotter:
                     ax2.plot(steps, test_pers, label=f'{run_name} (Test)', 
                             alpha=0.7, linewidth=1.5)
             
-            # Plot from trainingStats (per-epoch data)
             if training_stats:
                 epochs = np.arange(len(training_stats.get('testLoss', [])))
                 if 'testLoss' in training_stats:
@@ -247,7 +214,6 @@ class TrainingPlotter:
                             label=f'{run_name} (Epochs)', 
                             alpha=0.7, linewidth=1.5, linestyle=':')
             
-            # Plot train loss if available
             if metrics:
                 steps = []
                 train_losses = []
@@ -283,7 +249,6 @@ class TrainingPlotter:
     def plot_learning_rate(self, data_dicts: List[Dict[str, Any]],
                           figsize: Tuple[int, int] = (12, 6),
                           save_path: Optional[str] = None) -> Figure:
-        """Plot learning rate schedule."""
         fig, ax = plt.subplots(figsize=figsize)
         
         for data in data_dicts:
@@ -319,7 +284,6 @@ class TrainingPlotter:
     def plot_gradient_norms(self, data_dicts: List[Dict[str, Any]],
                            figsize: Tuple[int, int] = (12, 6),
                            save_path: Optional[str] = None) -> Figure:
-        """Plot gradient norms over training."""
         fig, ax = plt.subplots(figsize=figsize)
         
         for data in data_dicts:
@@ -363,7 +327,6 @@ class TrainingPlotter:
     def plot_memory_usage(self, data_dicts: List[Dict[str, Any]],
                          figsize: Tuple[int, int] = (12, 6),
                          save_path: Optional[str] = None) -> Figure:
-        """Plot memory usage over training."""
         fig, ax = plt.subplots(figsize=figsize)
         
         for data in data_dicts:
@@ -406,7 +369,6 @@ class TrainingPlotter:
     def plot_eval_comparison(self, data_dicts: List[Dict[str, Any]],
                             figsize: Tuple[int, int] = (12, 6),
                             save_path: Optional[str] = None) -> Figure:
-        """Compare evaluation results across runs."""
         fig, ax = plt.subplots(figsize=figsize)
         
         run_names = []
@@ -446,7 +408,6 @@ class TrainingPlotter:
     
     def plot_all(self, data_dicts: List[Dict[str, Any]], 
                 prefix: str = "training") -> None:
-        """Generate all plots."""
         print(f"Generating plots for {len(data_dicts)} run(s)...")
         
         # CTC Loss
@@ -489,7 +450,6 @@ class TrainingPlotter:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Plot training results from checkpoint directories',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

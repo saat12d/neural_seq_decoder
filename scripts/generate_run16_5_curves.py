@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""
-Generate loss and training curves for run16_5 (best run).
-
-Uses the existing plotting infrastructure to create:
-1. CTC Loss over training steps
-2. PER over training steps
-3. Learning rate schedule
-4. Train vs Test comparison
-"""
 
 import os
 import sys
@@ -19,7 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -27,14 +17,12 @@ from scripts.plot_training_results import CheckpointDataLoader, TrainingPlotter
 
 
 def load_run16_5_data():
-    """Load all data for run16_5."""
     checkpoint_dir = Path("data/checkpoints/run16_5")
     loader = CheckpointDataLoader(str(checkpoint_dir))
     return loader.get_all_data()
 
 
 def plot_loss_curve(data, output_dir: Path):
-    """Plot CTC loss over training steps."""
     print("Generating loss curve...")
     
     metrics = data.get('metrics', [])
@@ -64,12 +52,10 @@ def plot_loss_curve(data, output_dir: Path):
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Plot test/validation loss
     valid_steps = [s for s, l in zip(steps, losses) if l is not None]
     valid_losses = [l for l in losses if l is not None]
     
     if valid_steps:
-        # Optional smoothing
         if len(valid_losses) > 5:
             valid_losses_smooth = pd.Series(valid_losses).ewm(span=5, adjust=False).mean().values
         else:
@@ -78,9 +64,8 @@ def plot_loss_curve(data, output_dir: Path):
         ax.plot(valid_steps, valid_losses_smooth, label='Validation Loss', 
                color='#1f77b4', linewidth=2, alpha=0.8)
         ax.plot(valid_steps, valid_losses, color='#1f77b4', linewidth=1, 
-               alpha=0.3, linestyle='--')  # Raw data in background
+               alpha=0.3, linestyle='--')
     
-    # Plot train loss if available
     train_valid_steps = [s for s, l in zip(steps, train_losses) if l is not None]
     train_valid_losses = [l for l in train_losses if l is not None]
     
@@ -107,7 +92,6 @@ def plot_loss_curve(data, output_dir: Path):
 
 
 def plot_per_curve(data, output_dir: Path):
-    """Plot PER over training steps."""
     print("Generating PER curve...")
     
     metrics = data.get('metrics', [])
@@ -139,7 +123,6 @@ def plot_per_curve(data, output_dir: Path):
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Plot PER
     valid_steps = [s for s, p in zip(steps, pers) if p is not None]
     valid_pers = [p for p in pers if p is not None]
     
@@ -154,7 +137,6 @@ def plot_per_curve(data, output_dir: Path):
         ax.plot(valid_steps, valid_pers, color='#2ca02c', linewidth=1, 
                alpha=0.3, linestyle='--')
     
-    # Plot PER moving average if available
     ma_valid_steps = [s for s, p in zip(steps, per_mas) if p is not None]
     ma_valid_pers = [p for p in per_mas if p is not None]
     
@@ -162,7 +144,6 @@ def plot_per_curve(data, output_dir: Path):
         ax.plot(ma_valid_steps, ma_valid_pers, label='PER (Moving Avg)', 
                color='#9467bd', linewidth=1.5, alpha=0.7, linestyle=':')
     
-    # Mark best PER
     if valid_pers:
         best_idx = np.argmin(valid_pers)
         best_step = valid_steps[best_idx]
@@ -187,7 +168,6 @@ def plot_per_curve(data, output_dir: Path):
 
 
 def plot_lr_schedule(data, output_dir: Path):
-    """Plot learning rate schedule."""
     print("Generating LR schedule...")
     
     metrics = data.get('metrics', [])
@@ -217,7 +197,6 @@ def plot_lr_schedule(data, output_dir: Path):
     ax.set_yscale('log')
     ax.grid(True, alpha=0.3, which='both')
     
-    # Add annotations for key points
     if len(lrs) > 0:
         ax.text(0.02, 0.98, f'Start LR: {lrs[0]:.2e}\nEnd LR: {lrs[-1]:.2e}', 
                transform=ax.transAxes, fontsize=10,
@@ -231,7 +210,6 @@ def plot_lr_schedule(data, output_dir: Path):
 
 
 def plot_combined_training_curves(data, output_dir: Path):
-    """Plot combined training curves in one figure."""
     print("Generating combined training curves...")
     
     metrics = data.get('metrics', [])
@@ -257,8 +235,6 @@ def plot_combined_training_curves(data, output_dir: Path):
         train_losses.append(entry.get('train_loss_avg'))
     
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    
-    # Top left: Loss
     ax1 = axes[0, 0]
     valid_steps = [s for s, l in zip(steps, losses) if l is not None]
     valid_losses = [l for l in losses if l is not None]
@@ -285,7 +261,6 @@ def plot_combined_training_curves(data, output_dir: Path):
     ax1.grid(True, alpha=0.3)
     ax1.legend(fontsize=9)
     
-    # Top right: PER
     ax2 = axes[0, 1]
     valid_steps = [s for s, p in zip(steps, pers) if p is not None]
     valid_pers = [p for p in pers if p is not None]
@@ -296,7 +271,6 @@ def plot_combined_training_curves(data, output_dir: Path):
             valid_pers_smooth = valid_pers
         ax2.plot(valid_steps, valid_pers_smooth, color='#2ca02c', linewidth=2)
         
-        # Mark best
         if valid_pers:
             best_idx = np.argmin(valid_pers)
             best_step = valid_steps[best_idx]
@@ -310,7 +284,6 @@ def plot_combined_training_curves(data, output_dir: Path):
     ax2.set_title('Phoneme Error Rate', fontsize=12, fontweight='bold')
     ax2.grid(True, alpha=0.3)
     
-    # Bottom left: Learning Rate
     ax3 = axes[1, 0]
     lr_steps = [s for s, lr in zip(steps, lrs) if lr is not None]
     lr_values = [lr for lr in lrs if lr is not None]
@@ -322,7 +295,6 @@ def plot_combined_training_curves(data, output_dir: Path):
     ax3.set_yscale('log')
     ax3.grid(True, alpha=0.3, which='both')
     
-    # Bottom right: Loss vs PER (dual axis)
     ax4 = axes[1, 1]
     ax4_twin = ax4.twinx()
     
@@ -348,7 +320,7 @@ def plot_combined_training_curves(data, output_dir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate training curves for run16_5')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=str, default='paper_figures_v2', 
                        help='Output directory')
     

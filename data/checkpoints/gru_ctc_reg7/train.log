@@ -1,0 +1,131 @@
+2025-12-03 23:48:40,196 [INFO] ================================================================================
+2025-12-03 23:48:40,196 [INFO] Starting training run
+2025-12-03 23:48:40,196 [INFO] ================================================================================
+2025-12-03 23:48:40,198 [INFO] Output directory: /home/bciuser/projects/neural_seq_decoder/data/checkpoints/gru_ctc_reg7
+2025-12-03 23:48:40,198 [INFO] Dataset path: /home/bciuser/projects/neural_seq_decoder/data/formatted/ptDecoder_ctc
+2025-12-03 23:48:40,198 [INFO] Batch size: 64
+2025-12-03 23:48:40,198 [INFO] Total batches: 10000
+2025-12-03 23:48:40,198 [INFO] Seed: 0
+2025-12-03 23:48:48,761 [INFO] Dataset loaded: 24 training days
+2025-12-03 23:48:48,761 [INFO] Training samples: 8800
+2025-12-03 23:48:48,761 [INFO] Test samples: 880
+2025-12-03 23:48:48,761 [INFO] ================================================================================
+2025-12-03 23:48:48,762 [INFO] Model Architecture
+2025-12-03 23:48:48,762 [INFO] ================================================================================
+2025-12-03 23:48:48,762 [INFO] Input features: 256
+2025-12-03 23:48:48,762 [INFO] Hidden units: 1024
+2025-12-03 23:48:48,762 [INFO] GRU layers: 5
+2025-12-03 23:48:48,762 [INFO] Output classes: 40 (+ 1 blank = 41)
+2025-12-03 23:48:48,762 [INFO] Days (per-day embeddings): 24
+2025-12-03 23:48:48,762 [INFO] Dropout: 0.3
+2025-12-03 23:48:48,762 [INFO] Input dropout: 0.1
+2025-12-03 23:48:48,762 [INFO] Layer norm: True
+2025-12-03 23:48:48,762 [INFO] Bidirectional: True
+2025-12-03 23:48:48,762 [INFO] Stride length: 4, Kernel length: 32
+/home/bciuser/projects/neural_seq_decoder/.venv/lib/python3.9/site-packages/torch/functional.py:504: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3190.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+2025-12-03 23:48:54,122 [INFO] Total parameters: 135,424,553 (135.42M)
+2025-12-03 23:48:54,123 [INFO] Trainable parameters: 135,424,553
+2025-12-03 23:48:54,123 [INFO] Using mixed precision training with FP16 (device doesn't support BF16)
+2025-12-03 23:48:54,124 [INFO] ================================================================================
+2025-12-03 23:48:54,124 [INFO] Training Configuration
+2025-12-03 23:48:54,124 [INFO] ================================================================================
+2025-12-03 23:48:54,124 [INFO] Optimizer: ADAMW
+2025-12-03 23:48:54,124 [INFO] Peak LR: 0.0015 (capped), End LR: 0.0015
+2025-12-03 23:48:54,124 [INFO] Warmup steps: 0, Cosine steps: 10000
+2025-12-03 23:48:54,124 [INFO] Weight decay: 0.0001
+2025-12-03 23:48:54,125 [INFO] Gradient clipping: max_norm=1.0
+2025-12-03 23:48:54,125 [INFO] Adaptive LR: ENABLED (reduce by 80.0% if grad_norm > 10.0 or NaN detected)
+2025-12-03 23:48:54,125 [INFO]   Min LR: 0.0005, Max reductions: 5
+2025-12-03 23:48:54,125 [INFO] Augmentation - White noise SD: 0.2
+2025-12-03 23:48:54,125 [INFO] Augmentation - Constant offset SD: 0.1
+2025-12-03 23:48:54,125 [INFO] Time masking - Prob: 0.1, Width: 15, Max masks: 2
+2025-12-03 23:48:54,125 [INFO] Using constant LR (no warmup, no decay)
+2025-12-03 23:48:54,125 [INFO] ================================================================================
+2025-12-03 23:48:54,125 [INFO] Starting training loop
+2025-12-03 23:48:54,126 [INFO] ================================================================================
+/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/augmentations.py:91: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at ../aten/src/ATen/native/Convolution.cpp:895.)
+  return self.conv(input, weight=self.weight, groups=self.groups, padding="same")
+2025-12-03 23:48:59,202 [INFO] batch     0 | loss:  3.9506 (train:  7.1575) | per:  0.9437 (ma:  0.9437) | grad_norm: 2.3010 (max: 2.3010) | lr: 0.001500 | skipped: 0 | time:  0.05s | mem: 2.17GB/7.00GB
+2025-12-03 23:48:59,535 [INFO] Sample prediction (step 0):
+2025-12-03 23:48:59,535 [INFO]   Target length: 20, Pred length: 1
+2025-12-03 23:48:59,535 [INFO]   Target IDs (first 20): [32, 18, 1, 20, 28, 3, 29, 18, 40, 28, 18, 20, 3, 23, 29, 17, 9, 12, 9, 40]
+2025-12-03 23:48:59,536 [INFO]   Pred IDs (first 20): [40]
+2025-12-03 23:48:59,536 [INFO]   Sample PER: 0.9500
+2025-12-03 23:49:06,907 [INFO] ✓ New best checkpoint saved (PER: 0.9437, PER_MA: 0.9437)
+2025-12-03 23:50:28,317 [INFO] batch   100 | loss:  3.2328 (train:  3.5748) | per:  0.8683 (ma:  0.9060) | grad_norm: 4.8638 (max: 15.2269) | lr: 0.001500 | skipped: 0 | time:  0.89s | mem: 2.17GB/10.84GB
+2025-12-03 23:50:35,709 [INFO] ✓ New best checkpoint saved (PER: 0.8683, PER_MA: 0.9060)
+2025-12-03 23:51:54,051 [INFO] batch   200 | loss:  3.1118 (train:  3.1131) | per:  0.7568 (ma:  0.8563) | grad_norm: 2.6673 (max: 5.7745) | lr: 0.001500 | skipped: 0 | time:  0.86s | mem: 2.17GB/10.84GB
+2025-12-03 23:52:01,523 [INFO] ✓ New best checkpoint saved (PER: 0.7568, PER_MA: 0.8563)
+2025-12-03 23:53:22,409 [INFO] batch   300 | loss:  2.7317 (train:  2.8360) | per:  0.6859 (ma:  0.8137) | grad_norm: 2.5127 (max: 5.9530) | lr: 0.001500 | skipped: 0 | time:  0.88s | mem: 2.17GB/10.84GB
+2025-12-03 23:53:29,843 [INFO] ✓ New best checkpoint saved (PER: 0.6859, PER_MA: 0.8137)
+2025-12-03 23:54:48,510 [INFO] batch   400 | loss:  2.5905 (train:  2.6678) | per:  0.6743 (ma:  0.7858) | grad_norm: 2.1742 (max: 5.0636) | lr: 0.001500 | skipped: 0 | time:  0.86s | mem: 2.17GB/10.84GB
+2025-12-03 23:54:55,943 [INFO] ✓ New best checkpoint saved (PER: 0.6743, PER_MA: 0.7858)
+2025-12-03 23:56:16,784 [INFO] batch   500 | loss:  2.4843 (train:  2.5352) | per:  0.6452 (ma:  0.7624) | grad_norm: 2.0169 (max: 2.8913) | lr: 0.001500 | skipped: 0 | time:  0.88s | mem: 2.17GB/10.84GB
+2025-12-03 23:56:24,332 [INFO] ✓ New best checkpoint saved (PER: 0.6452, PER_MA: 0.7624)
+2025-12-03 23:57:43,960 [INFO] batch   600 | loss:  2.4260 (train:  2.4281) | per:  0.6574 (ma:  0.7474) | grad_norm: 2.1484 (max: 3.1956) | lr: 0.001500 | skipped: 0 | time:  0.87s | mem: 2.17GB/10.84GB
+2025-12-03 23:59:02,230 [INFO] batch   700 | loss:  2.2812 (train:  2.3392) | per:  0.6246 (ma:  0.7320) | grad_norm: 2.0781 (max: 3.1191) | lr: 0.001500 | skipped: 0 | time:  0.78s | mem: 2.17GB/10.84GB
+2025-12-03 23:59:09,748 [INFO] ✓ New best checkpoint saved (PER: 0.6246, PER_MA: 0.7320)
+2025-12-04 00:00:27,947 [INFO] batch   800 | loss:  2.2260 (train:  2.2478) | per:  0.6072 (ma:  0.7182) | grad_norm: 1.9817 (max: 3.0925) | lr: 0.001500 | skipped: 0 | time:  0.86s | mem: 2.17GB/10.84GB
+2025-12-04 00:00:35,510 [INFO] ✓ New best checkpoint saved (PER: 0.6072, PER_MA: 0.7182)
+2025-12-04 00:01:55,490 [INFO] batch   900 | loss:  2.1773 (train:  2.1744) | per:  0.5994 (ma:  0.7063) | grad_norm: 2.0013 (max: 3.3561) | lr: 0.001500 | skipped: 0 | time:  0.88s | mem: 2.17GB/10.84GB
+2025-12-04 00:02:02,875 [INFO] ✓ New best checkpoint saved (PER: 0.5994, PER_MA: 0.7063)
+2025-12-04 00:03:21,950 [INFO] batch  1000 | loss:  2.1341 (train:  2.1123) | per:  0.5881 (ma:  0.6955) | grad_norm: 2.0200 (max: 3.2300) | lr: 0.001500 | skipped: 0 | time:  0.86s | mem: 2.17GB/10.84GB
+2025-12-04 00:03:22,298 [INFO] Sample prediction (step 1000):
+2025-12-04 00:03:22,298 [INFO]   Target length: 20, Pred length: 9
+2025-12-04 00:03:22,298 [INFO]   Target IDs (first 20): [32, 18, 1, 20, 28, 3, 29, 18, 40, 28, 18, 20, 3, 23, 29, 17, 9, 12, 9, 40]
+2025-12-04 00:03:22,299 [INFO]   Pred IDs (first 20): [3, 38, 18, 40, 28, 3, 21, 18, 40]
+2025-12-04 00:03:22,299 [INFO]   Sample PER: 0.7000
+2025-12-04 00:03:29,864 [INFO] ✓ New best checkpoint saved (PER: 0.5881, PER_MA: 0.6955)
+2025-12-04 00:04:49,576 [INFO] batch  1100 | loss:  2.0992 (train:  2.0787) | per:  0.5803 (ma:  0.6859) | grad_norm: 1.8955 (max: 2.7440) | lr: 0.001500 | skipped: 0 | time:  0.87s | mem: 2.17GB/10.84GB
+2025-12-04 00:04:57,095 [INFO] ✓ New best checkpoint saved (PER: 0.5803, PER_MA: 0.6859)
+2025-12-04 00:06:16,429 [INFO] batch  1200 | loss:  2.0694 (train:  2.0344) | per:  0.5721 (ma:  0.6772) | grad_norm: 2.0431 (max: 3.1899) | lr: 0.001500 | skipped: 0 | time:  0.87s | mem: 2.17GB/10.84GB
+2025-12-04 00:06:23,841 [INFO] ✓ New best checkpoint saved (PER: 0.5721, PER_MA: 0.6772)
+2025-12-04 00:07:42,712 [INFO] batch  1300 | loss:  2.0360 (train:  2.0011) | per:  0.5603 (ma:  0.6688) | grad_norm: 2.0967 (max: 3.6149) | lr: 0.001500 | skipped: 0 | time:  0.86s | mem: 2.17GB/10.84GB
+2025-12-04 00:07:50,215 [INFO] ✓ New best checkpoint saved (PER: 0.5603, PER_MA: 0.6688)
+2025-12-04 00:09:08,147 [INFO] batch  1400 | loss:  2.0066 (train:  1.9690) | per:  0.5576 (ma:  0.6614) | grad_norm: 1.9503 (max: 2.9170) | lr: 0.001500 | skipped: 0 | time:  0.85s | mem: 2.17GB/10.84GB
+2025-12-04 00:09:15,516 [INFO] ✓ New best checkpoint saved (PER: 0.5576, PER_MA: 0.6614)
+2025-12-04 00:10:36,133 [INFO] batch  1500 | loss:  2.0053 (train:  1.9187) | per:  0.5529 (ma:  0.6546) | grad_norm: 1.9108 (max: 2.7606) | lr: 0.001500 | skipped: 0 | time:  0.88s | mem: 2.17GB/10.84GB
+2025-12-04 00:10:43,572 [INFO] ✓ New best checkpoint saved (PER: 0.5529, PER_MA: 0.6546)
+2025-12-04 00:12:01,179 [INFO] batch  1600 | loss:  1.9552 (train:  1.8971) | per:  0.5434 (ma:  0.6481) | grad_norm: 1.9501 (max: 3.7126) | lr: 0.001500 | skipped: 0 | time:  0.85s | mem: 2.17GB/10.84GB
+2025-12-04 00:12:08,663 [INFO] ✓ New best checkpoint saved (PER: 0.5434, PER_MA: 0.6481)
+2025-12-04 00:13:26,940 [INFO] batch  1700 | loss:  1.9420 (train:  1.8667) | per:  0.5481 (ma:  0.6425) | grad_norm: 2.0237 (max: 3.8542) | lr: 0.001500 | skipped: 0 | time:  0.86s | mem: 2.17GB/10.84GB
+2025-12-04 00:14:44,871 [INFO] batch  1800 | loss:  1.9392 (train:  1.8527) | per:  0.5402 (ma:  0.6372) | grad_norm: 2.0514 (max: 3.4553) | lr: 0.001500 | skipped: 0 | time:  0.78s | mem: 2.17GB/10.84GB
+2025-12-04 00:14:52,484 [INFO] ✓ New best checkpoint saved (PER: 0.5402, PER_MA: 0.6372)
+2025-12-04 00:16:08,630 [INFO] batch  1900 | loss:  1.9069 (train:  1.8174) | per:  0.5312 (ma:  0.6319) | grad_norm: 2.1079 (max: 4.6554) | lr: 0.001500 | skipped: 0 | time:  0.84s | mem: 2.17GB/10.84GB
+2025-12-04 00:16:16,102 [INFO] ✓ New best checkpoint saved (PER: 0.5312, PER_MA: 0.6319)
+2025-12-04 00:17:34,212 [INFO] batch  2000 | loss:  1.9180 (train:  1.8063) | per:  0.5322 (ma:  0.6271) | grad_norm: 2.0954 (max: 4.1543) | lr: 0.001500 | skipped: 0 | time:  0.86s | mem: 2.17GB/10.84GB
+2025-12-04 00:17:34,538 [INFO] Sample prediction (step 2000):
+2025-12-04 00:17:34,538 [INFO]   Target length: 20, Pred length: 11
+2025-12-04 00:17:34,538 [INFO]   Target IDs (first 20): [32, 18, 1, 20, 28, 3, 29, 18, 40, 28, 18, 20, 3, 23, 29, 17, 9, 12, 9, 40]
+2025-12-04 00:17:34,538 [INFO]   Pred IDs (first 20): [10, 18, 3, 40, 36, 1, 40, 23, 3, 23, 40]
+2025-12-04 00:17:34,539 [INFO]   Sample PER: 0.7500
+2025-12-04 00:18:51,134 [INFO] batch  2100 | loss:  1.8793 (train:  1.7808) | per:  0.5226 (ma:  0.6224) | grad_norm: 1.9812 (max: 4.2556) | lr: 0.001500 | skipped: 0 | time:  0.77s | mem: 2.17GB/10.84GB
+2025-12-04 00:18:58,706 [INFO] ✓ New best checkpoint saved (PER: 0.5226, PER_MA: 0.6224)
+2025-12-04 00:20:16,386 [INFO] batch  2200 | loss:  1.8585 (train:  1.7665) | per:  0.5214 (ma:  0.6180) | grad_norm: 2.2722 (max: 4.3890) | lr: 0.001500 | skipped: 0 | time:  0.85s | mem: 2.17GB/10.84GB
+2025-12-04 00:20:23,956 [INFO] ✓ New best checkpoint saved (PER: 0.5214, PER_MA: 0.6180)
+2025-12-04 00:21:37,796 [INFO] batch  2300 | loss:  1.8558 (train:  1.7449) | per:  0.5108 (ma:  0.6135) | grad_norm: 2.3491 (max: 4.8952) | lr: 0.001500 | skipped: 0 | time:  0.81s | mem: 2.17GB/10.84GB
+2025-12-04 00:21:45,375 [INFO] ✓ New best checkpoint saved (PER: 0.5108, PER_MA: 0.6135)
+2025-12-04 00:23:02,220 [INFO] batch  2400 | loss:  1.8520 (train:  1.7352) | per:  0.5126 (ma:  0.6095) | grad_norm: 2.2558 (max: 4.7078) | lr: 0.001500 | skipped: 0 | time:  0.84s | mem: 2.17GB/10.84GB
+2025-12-04 00:24:19,018 [INFO] batch  2500 | loss:  1.8306 (train:  1.7270) | per:  0.5116 (ma:  0.6057) | grad_norm: 2.4871 (max: 7.7420) | lr: 0.001500 | skipped: 0 | time:  0.77s | mem: 2.17GB/10.84GB
+2025-12-04 00:25:35,965 [INFO] batch  2600 | loss:  1.8213 (train:  1.7237) | per:  0.5115 (ma:  0.6022) | grad_norm: 2.3240 (max: 3.7709) | lr: 0.001500 | skipped: 0 | time:  0.77s | mem: 2.17GB/10.84GB
+2025-12-04 00:26:52,419 [INFO] batch  2700 | loss:  1.8193 (train:  1.7019) | per:  0.5070 (ma:  0.5988) | grad_norm: 2.3556 (max: 4.7238) | lr: 0.001500 | skipped: 0 | time:  0.76s | mem: 2.17GB/10.84GB
+2025-12-04 00:26:59,944 [INFO] ✓ New best checkpoint saved (PER: 0.5070, PER_MA: 0.5988)
+2025-12-04 00:28:14,339 [INFO] batch  2800 | loss:  1.8179 (train:  1.6989) | per:  0.5045 (ma:  0.5956) | grad_norm: 2.5861 (max: 7.0275) | lr: 0.001500 | skipped: 0 | time:  0.82s | mem: 2.17GB/10.84GB
+2025-12-04 00:28:21,779 [INFO] ✓ New best checkpoint saved (PER: 0.5045, PER_MA: 0.5956)
+2025-12-04 00:29:37,557 [INFO] batch  2900 | loss:  1.8134 (train:  1.6906) | per:  0.5059 (ma:  0.5926) | grad_norm: 2.5771 (max: 5.0067) | lr: 0.001500 | skipped: 0 | time:  0.83s | mem: 2.17GB/10.84GB
+2025-12-04 00:30:54,089 [INFO] batch  3000 | loss:  1.8102 (train:  1.6718) | per:  0.5053 (ma:  0.5898) | grad_norm: 2.6682 (max: 4.6169) | lr: 0.001500 | skipped: 0 | time:  0.77s | mem: 2.17GB/10.84GB
+2025-12-04 00:30:54,397 [INFO] Sample prediction (step 3000):
+2025-12-04 00:30:54,397 [INFO]   Target length: 20, Pred length: 9
+2025-12-04 00:30:54,397 [INFO]   Target IDs (first 20): [32, 18, 1, 20, 28, 3, 29, 18, 40, 28, 18, 20, 3, 23, 29, 17, 9, 12, 9, 40]
+2025-12-04 00:30:54,397 [INFO]   Pred IDs (first 20): [17, 13, 29, 40, 17, 12, 35, 12, 40]
+2025-12-04 00:30:54,398 [INFO]   Sample PER: 0.8000
+2025-12-04 00:32:10,803 [INFO] batch  3100 | loss:  1.8179 (train:  1.6784) | per:  0.5046 (ma:  0.5871) | grad_norm: 2.7038 (max: 4.4602) | lr: 0.001500 | skipped: 0 | time:  0.76s | mem: 2.17GB/10.84GB
+2025-12-04 00:33:26,895 [INFO] batch  3200 | loss:  1.7798 (train:  1.6649) | per:  0.4958 (ma:  0.5843) | grad_norm: 2.6103 (max: 3.8877) | lr: 0.001500 | skipped: 0 | time:  0.76s | mem: 2.17GB/10.84GB
+2025-12-04 00:33:34,471 [INFO] ✓ New best checkpoint saved (PER: 0.4958, PER_MA: 0.5843)
+2025-12-04 00:34:50,845 [INFO] batch  3300 | loss:  1.7833 (train:  1.6562) | per:  0.4997 (ma:  0.5818) | grad_norm: 2.7135 (max: 6.4580) | lr: 0.001500 | skipped: 0 | time:  0.84s | mem: 2.17GB/10.84GB
+2025-12-04 00:36:05,610 [INFO] batch  3400 | loss:  1.7783 (train:  1.6386) | per:  0.5011 (ma:  0.5795) | grad_norm: 2.6715 (max: 4.8848) | lr: 0.001500 | skipped: 0 | time:  0.75s | mem: 2.17GB/10.84GB
+2025-12-04 00:37:23,370 [INFO] batch  3500 | loss:  1.7816 (train:  1.6465) | per:  0.5005 (ma:  0.5773) | grad_norm: 2.7844 (max: 5.1772) | lr: 0.001500 | skipped: 0 | time:  0.78s | mem: 2.17GB/10.84GB
+2025-12-04 00:38:38,605 [INFO] batch  3600 | loss:  1.7653 (train:  1.6311) | per:  0.4932 (ma:  0.5751) | grad_norm: 2.8828 (max: 6.3743) | lr: 0.001500 | skipped: 0 | time:  0.75s | mem: 2.17GB/10.84GB
+2025-12-04 00:38:46,130 [INFO] ✓ New best checkpoint saved (PER: 0.4932, PER_MA: 0.5751)
+2025-12-04 00:40:02,063 [INFO] batch  3700 | loss:  1.7669 (train:  1.6350) | per:  0.4973 (ma:  0.5730) | grad_norm: 2.9418 (max: 6.0068) | lr: 0.001500 | skipped: 0 | time:  0.83s | mem: 2.17GB/10.84GB

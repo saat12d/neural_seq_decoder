@@ -162,11 +162,18 @@ cython_debug/
 # Data files
 data/raw/
 data/formatted/
-# Ignore checkpoints directory by default, but allow specific files
-# First, unignore the checkpoints directory itself
+
+# Checkpoints: ignore large model files, allow small metadata files
 !data/checkpoints/
-# Then ignore everything in it
-data/checkpoints/*
-# But allow eval JSON files and train.log files
-!data/checkpoints/*/eval*.json
+data/checkpoints/**
+!data/checkpoints/*/
+!data/checkpoints/*/args
+!data/checkpoints/*/trainingStats
 !data/checkpoints/*/train.log
+!data/checkpoints/*/metrics.jsonl
+!data/checkpoints/*/eval*.json
+!data/checkpoints/*/*.md
+
+# Explicitly exclude large model files
+data/checkpoints/*/*.pt
+data/checkpoints/*/modelWeights

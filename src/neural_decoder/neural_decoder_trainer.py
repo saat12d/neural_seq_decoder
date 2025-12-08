@@ -10,7 +10,7 @@ import hydra
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, random_split, random_split
+from torch.utils.data import DataLoader, random_split
 
 from .model import GRUDecoder
 from .dataset import SpeechDataset
@@ -89,7 +89,6 @@ def getDatasetLoaders(datasetPath, batchSize, args):
     with open(datasetPath, "rb") as f:
         data = pickle.load(f)
 
-    # Create full training dataset
     full_train_ds = SpeechDataset(
         data["train"],
         transform=None,
@@ -102,25 +101,21 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         freq_mask_max_masks=args.get("freq_mask_max_masks", 0),
     )
     
-    # Split training data into train and validation
-    val_split_ratio = args.get("val_split_ratio", 0.1)  # Default 10% for validation
+    val_split_ratio = args.get("val_split_ratio", 0.1)
     total_size = len(full_train_ds)
     val_size = int(total_size * val_split_ratio)
     train_size = total_size - val_size
     
-    # Use random_split with generator for reproducibility
     generator = torch.Generator()
     generator.manual_seed(args.get("seed", 0))
     train_subset, val_subset = random_split(
         full_train_ds, [train_size, val_size], generator=generator
     )
     
-    # Create validation dataset without augmentation
-    # Create a separate dataset from the same data but with split="test" (no augmentation)
     val_ds_raw = SpeechDataset(
         data["train"],
         transform=None,
-        split="test",  # No augmentation for validation
+        split="test",
         time_mask_prob=0.0,
         time_mask_width=0,
         time_mask_max_masks=0,
@@ -128,7 +123,6 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         freq_mask_width=0,
         freq_mask_max_masks=0,
     )
-    # Use the same validation indices from the random split
     val_ds = torch.utils.data.Subset(val_ds_raw, val_subset.indices)
     
     train_ds = train_subset
@@ -146,7 +140,7 @@ def getDatasetLoaders(datasetPath, batchSize, args):
         collate_fn=_collate,
     )
     val_loader = DataLoader(
-        val_ds_wrapped,
+        val_ds,
         batch_size=batchSize,
         shuffle=False,
         num_workers=num_workers,

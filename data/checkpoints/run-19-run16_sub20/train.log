@@ -1,0 +1,67 @@
+2025-12-05 06:12:56,271 [INFO] Enabled TF32 for faster FP32 matmuls (Ampere+ GPUs)
+2025-12-05 06:12:56,271 [INFO] ================================================================================
+2025-12-05 06:12:56,271 [INFO] Starting training run
+2025-12-05 06:12:56,271 [INFO] ================================================================================
+2025-12-05 06:12:56,271 [INFO] Run Number: 162
+2025-12-05 06:12:56,271 [INFO] Run Name: run-19-run16_sub20
+2025-12-05 06:12:56,272 [INFO] Run Purpose: Greedy-only: Warmup→Cosine, EMA=0.9995, bf16/amp, grad_accum=2, clip=1.0. Gentle aug + tiny input dropout; longer cosine tail to settle below 20% PER.
+2025-12-05 06:12:56,272 [INFO] Output directory: /home/bciuser/projects/neural_seq_decoder/data/checkpoints/run-19-run16_sub20
+2025-12-05 06:12:56,272 [INFO] Dataset path: /home/bciuser/projects/neural_seq_decoder/data/formatted/ptDecoder_ctc
+2025-12-05 06:12:56,272 [INFO] Batch size: 32
+2025-12-05 06:12:56,272 [INFO] Total batches: 16000
+2025-12-05 06:12:56,272 [INFO] Seed: 0
+2025-12-05 06:12:58,440 [INFO] Dataset loaded: 24 training days
+2025-12-05 06:12:58,440 [INFO] Training samples: 8000
+2025-12-05 06:12:58,440 [INFO] Validation samples: 800
+2025-12-05 06:12:58,440 [INFO] Test samples: 880
+2025-12-05 06:12:58,441 [INFO] ================================================================================
+2025-12-05 06:12:58,441 [INFO] Model Architecture
+2025-12-05 06:12:58,441 [INFO] ================================================================================
+2025-12-05 06:12:58,441 [INFO] Input features: 256
+2025-12-05 06:12:58,441 [INFO] Hidden units: 1024
+2025-12-05 06:12:58,441 [INFO] GRU layers: 5
+2025-12-05 06:12:58,441 [INFO] Output classes: 40 (+ 1 blank = 41)
+2025-12-05 06:12:58,441 [INFO] Days (per-day embeddings): 24
+2025-12-05 06:12:58,441 [INFO] Dropout: 0.4
+2025-12-05 06:12:58,441 [INFO] Input dropout: 0.05
+2025-12-05 06:12:58,441 [INFO] Layer norm: True
+2025-12-05 06:12:58,441 [INFO] Bidirectional: True
+2025-12-05 06:12:58,442 [INFO] Stride length: 4, Kernel length: 32
+/opt/conda/lib/python3.10/site-packages/torch/functional.py:554: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4314.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+2025-12-05 06:13:01,777 [INFO] Enabled cuDNN benchmark for faster training
+2025-12-05 06:13:01,778 [INFO] Total parameters: 135,424,553 (135.42M)
+2025-12-05 06:13:01,778 [INFO] Trainable parameters: 135,424,553
+2025-12-05 06:13:01,778 [INFO] ================================================================================
+2025-12-05 06:13:01,778 [INFO] CTC Sanity Checks
+2025-12-05 06:13:01,779 [INFO] ================================================================================
+2025-12-05 06:13:01,779 [INFO] ✓ CTCLoss blank index: 0
+2025-12-05 06:13:02,174 [INFO] ✓ T_eff calculation verified (min=34, max=215)
+2025-12-05 06:13:02,192 [INFO] ✓ Labels verified: no blanks in valid spans (labels>=1)
+2025-12-05 06:13:02,192 [INFO] ✓ Input lengths: min=170, max=893
+2025-12-05 06:13:02,192 [INFO] ✓ Target lengths: min=13, max=64
+2025-12-05 06:13:02,193 [INFO] ✓ T_eff lengths: min=34, max=215
+2025-12-05 06:13:02,194 [INFO] Using mixed precision BF16 (Ampere+)
+2025-12-05 06:13:02,194 [INFO]   Safety: log_softmax + CTCLoss computed in FP32
+2025-12-05 06:13:03,328 [INFO] EMA enabled: decay=0.9995
+2025-12-05 06:13:03,329 [INFO] ================================================================================
+2025-12-05 06:13:03,329 [INFO] Training Configuration
+2025-12-05 06:13:03,329 [INFO] ================================================================================
+2025-12-05 06:13:03,329 [INFO] Optimizer: ADAM
+2025-12-05 06:13:03,329 [INFO] Peak LR: 0.0016 | End LR: 6e-06
+2025-12-05 06:13:03,329 [INFO] Warmup steps: 1500 | SGDR: T0=3000, Tmult=2
+2025-12-05 06:13:03,329 [INFO] Weight decay: 1e-05
+2025-12-05 06:13:03,329 [INFO] Gradient clipping: max_norm=1.0
+2025-12-05 06:13:03,329 [INFO] CTC Decoding: Greedy (no beam)
+2025-12-05 06:13:03,329 [INFO] Gradient accumulation: 2 steps (effective batch size: 64)
+/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/neural_decoder_trainer.py:480: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast(enabled=True, dtype=amp_dtype):
+/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/augmentations.py:91: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at /pytorch/aten/src/ATen/native/Convolution.cpp:1036.)
+  return self.conv(input, weight=self.weight, groups=self.groups, padding="same")
+2025-12-05 06:13:09,081 [INFO] batch     0 | loss:  6.3389 | per:  0.9096 (ma:  0.9096) | lr: 0.001600 | time/batch(avg):  0.06s | mem: 2.23GB/5.47GB | gn(preclip): 6.17
+2025-12-05 06:13:10,853 [INFO] ✓ New best checkpoint saved (val PER: 0.9096)
+2025-12-05 06:13:44,173 [INFO] batch   100 | loss:  6.1194 | per:  0.9037 (ma:  0.9067) | lr: 0.000053 | time/batch(avg):  0.35s | mem: 3.82GB/15.15GB | gn(preclip): 2.62
+2025-12-05 06:13:52,601 [INFO] ✓ New best checkpoint saved (val PER: 0.9037)
+2025-12-05 06:14:26,954 [INFO] batch   200 | loss:  5.8776 | per:  0.9185 (ma:  0.9106) | lr: 0.000107 | time/batch(avg):  0.43s | mem: 3.82GB/15.16GB | gn(preclip): 4.01
+2025-12-05 06:15:01,700 [INFO] batch   300 | loss:  5.6263 | per:  0.9190 (ma:  0.9127) | lr: 0.000160 | time/batch(avg):  0.35s | mem: 3.83GB/15.10GB | gn(preclip): 2.89
+2025-12-05 06:15:36,628 [INFO] batch   400 | loss:  5.3693 | per:  0.9180 (ma:  0.9138) | lr: 0.000213 | time/batch(avg):  0.35s | mem: 3.83GB/15.01GB | gn(preclip): 3.27

@@ -1,0 +1,160 @@
+2025-12-05 17:38:18,638 [INFO] Enabled TF32 for faster FP32 matmuls (Ampere+ GPUs)
+2025-12-05 17:38:18,639 [INFO] ================================================================================
+2025-12-05 17:38:18,639 [INFO] Starting training run
+2025-12-05 17:38:18,639 [INFO] ================================================================================
+2025-12-05 17:38:18,639 [INFO] Run Number: 16
+2025-12-05 17:38:18,639 [INFO] Run Name: run16_3
+2025-12-05 17:38:18,639 [INFO] Run Purpose: Greedy-only: Warmup→Cosine, EMA=0.999, bf16/amp, grad_accum=2, clip=1.0. Slightly higher peak LR and longer cosine tail to reduce PER without beam.
+2025-12-05 17:38:18,640 [INFO] Output directory: /home/bciuser/projects/neural_seq_decoder/data/checkpoints/run16_3
+2025-12-05 17:38:18,640 [INFO] Dataset path: /home/bciuser/projects/neural_seq_decoder/data/formatted/ptDecoder_ctc
+2025-12-05 17:38:18,640 [INFO] Batch size: 32
+2025-12-05 17:38:18,640 [INFO] Total batches: 12000
+2025-12-05 17:38:18,640 [INFO] Seed: 0
+2025-12-05 17:38:20,717 [INFO] Dataset loaded: 24 training days
+2025-12-05 17:38:20,717 [INFO] Training samples: 8800
+2025-12-05 17:38:20,717 [INFO] Test samples: 880
+2025-12-05 17:38:20,717 [INFO] ================================================================================
+2025-12-05 17:38:20,717 [INFO] Model Architecture
+2025-12-05 17:38:20,717 [INFO] ================================================================================
+2025-12-05 17:38:20,717 [INFO] Input features: 256
+2025-12-05 17:38:20,717 [INFO] Hidden units: 1024
+2025-12-05 17:38:20,717 [INFO] GRU layers: 5
+2025-12-05 17:38:20,718 [INFO] Output classes: 40 (+ 1 blank = 41)
+2025-12-05 17:38:20,718 [INFO] Days (per-day embeddings): 24
+2025-12-05 17:38:20,718 [INFO] Dropout: 0.4
+2025-12-05 17:38:20,718 [INFO] Input dropout: 0.0
+2025-12-05 17:38:20,718 [INFO] Layer norm: True
+2025-12-05 17:38:20,718 [INFO] Bidirectional: True
+2025-12-05 17:38:20,718 [INFO] Stride length: 4, Kernel length: 32
+/opt/conda/lib/python3.10/site-packages/torch/functional.py:554: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4314.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+2025-12-05 17:38:24,109 [INFO] Enabled cuDNN benchmark for faster training
+2025-12-05 17:38:24,109 [INFO] Total parameters: 135,424,553 (135.42M)
+2025-12-05 17:38:24,109 [INFO] Trainable parameters: 135,424,553
+2025-12-05 17:38:24,110 [INFO] ================================================================================
+2025-12-05 17:38:24,110 [INFO] CTC Sanity Checks
+2025-12-05 17:38:24,110 [INFO] ================================================================================
+2025-12-05 17:38:24,110 [INFO] ✓ CTCLoss blank index: 0
+2025-12-05 17:38:24,470 [INFO] ✓ T_eff calculation verified (min=31, max=150)
+2025-12-05 17:38:24,487 [INFO] ✓ Labels verified: no blanks in valid spans (labels>=1)
+2025-12-05 17:38:24,488 [INFO] ✓ Input lengths: min=157, max=633
+2025-12-05 17:38:24,488 [INFO] ✓ Target lengths: min=11, max=58
+2025-12-05 17:38:24,488 [INFO] ✓ T_eff lengths: min=31, max=150
+2025-12-05 17:38:24,489 [INFO] Using mixed precision BF16 (Ampere+)
+/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/neural_decoder_trainer.py:296: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = torch.cuda.amp.GradScaler(enabled=(amp_dtype == torch.float16))
+2025-12-05 17:38:24,490 [INFO]   Safety: log_softmax + CTCLoss computed in FP32
+2025-12-05 17:38:25,627 [INFO] EMA enabled: decay=0.999
+2025-12-05 17:38:25,627 [INFO] ================================================================================
+2025-12-05 17:38:25,627 [INFO] Training Configuration
+2025-12-05 17:38:25,627 [INFO] ================================================================================
+2025-12-05 17:38:25,628 [INFO] Optimizer: ADAM
+2025-12-05 17:38:25,628 [INFO] Peak LR: 0.0016 | End LR: 3e-06
+2025-12-05 17:38:25,628 [INFO] Warmup steps: 1500 | Cosine steps: 10500
+2025-12-05 17:38:25,628 [INFO] Weight decay: 1e-05
+2025-12-05 17:38:25,628 [INFO] Gradient clipping: max_norm=1.0
+2025-12-05 17:38:25,628 [INFO] CTC Decoding: Greedy (no beam)
+2025-12-05 17:38:25,628 [INFO] Gradient accumulation: 2 steps (effective batch size: 64)
+/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/neural_decoder_trainer.py:391: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast(enabled=True, dtype=amp_dtype):
+/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/augmentations.py:91: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at /pytorch/aten/src/ATen/native/Convolution.cpp:1036.)
+  return self.conv(input, weight=self.weight, groups=self.groups, padding="same")
+2025-12-05 17:38:33,089 [INFO] batch     0 | loss:  6.8382 | per:  0.9066 (ma:  0.9066) | lr: 0.000000 | time/batch(avg):  0.07s | mem: 2.23GB/8.33GB
+2025-12-05 17:38:34,854 [INFO] ✓ New best checkpoint saved (PER: 0.9066)
+2025-12-05 17:39:09,813 [INFO] batch   100 | loss:  6.7637 | per:  0.8979 (ma:  0.9022) | lr: 0.000053 | time/batch(avg):  0.37s | mem: 3.82GB/13.00GB
+2025-12-05 17:39:17,240 [INFO] ✓ New best checkpoint saved (PER: 0.8979)
+2025-12-05 17:39:54,032 [INFO] batch   200 | loss:  6.5667 | per:  0.8831 (ma:  0.8958) | lr: 0.000107 | time/batch(avg):  0.44s | mem: 3.82GB/15.16GB
+2025-12-05 17:40:01,304 [INFO] ✓ New best checkpoint saved (PER: 0.8831)
+2025-12-05 17:40:38,197 [INFO] batch   300 | loss:  6.2728 | per:  0.8870 (ma:  0.8936) | lr: 0.000160 | time/batch(avg):  0.44s | mem: 3.83GB/15.16GB
+2025-12-05 17:41:14,727 [INFO] batch   400 | loss:  5.8718 | per:  0.8763 (ma:  0.8902) | lr: 0.000213 | time/batch(avg):  0.37s | mem: 3.82GB/15.17GB
+2025-12-05 17:41:21,922 [INFO] ✓ New best checkpoint saved (PER: 0.8763)
+2025-12-05 17:41:58,732 [INFO] batch   500 | loss:  5.3556 | per:  0.8590 (ma:  0.8850) | lr: 0.000267 | time/batch(avg):  0.44s | mem: 3.82GB/15.17GB
+2025-12-05 17:42:06,123 [INFO] ✓ New best checkpoint saved (PER: 0.8590)
+2025-12-05 17:42:43,411 [INFO] batch   600 | loss:  4.7449 | per:  0.8350 (ma:  0.8778) | lr: 0.000320 | time/batch(avg):  0.45s | mem: 3.82GB/15.17GB
+2025-12-05 17:42:50,719 [INFO] ✓ New best checkpoint saved (PER: 0.8350)
+2025-12-05 17:43:27,501 [INFO] batch   700 | loss:  4.0922 | per:  0.8024 (ma:  0.8684) | lr: 0.000373 | time/batch(avg):  0.44s | mem: 3.82GB/15.17GB
+2025-12-05 17:43:34,735 [INFO] ✓ New best checkpoint saved (PER: 0.8024)
+2025-12-05 17:44:11,299 [INFO] batch   800 | loss:  3.4765 | per:  0.7642 (ma:  0.8568) | lr: 0.000427 | time/batch(avg):  0.44s | mem: 3.83GB/15.17GB
+2025-12-05 17:44:18,583 [INFO] ✓ New best checkpoint saved (PER: 0.7642)
+2025-12-05 17:44:55,719 [INFO] batch   900 | loss:  2.9516 | per:  0.7172 (ma:  0.8429) | lr: 0.000480 | time/batch(avg):  0.44s | mem: 3.82GB/15.17GB
+2025-12-05 17:45:02,983 [INFO] ✓ New best checkpoint saved (PER: 0.7172)
+2025-12-05 17:45:39,931 [INFO] batch  1000 | loss:  2.5200 | per:  0.6668 (ma:  0.8269) | lr: 0.000533 | time/batch(avg):  0.44s | mem: 3.82GB/15.17GB
+2025-12-05 17:45:47,172 [INFO] ✓ New best checkpoint saved (PER: 0.6668)
+2025-12-05 17:46:24,058 [INFO] batch  1100 | loss:  2.1861 | per:  0.6158 (ma:  0.8093) | lr: 0.000587 | time/batch(avg):  0.44s | mem: 3.83GB/15.17GB
+2025-12-05 17:46:31,302 [INFO] ✓ New best checkpoint saved (PER: 0.6158)
+2025-12-05 17:47:07,917 [INFO] batch  1200 | loss:  1.9158 | per:  0.5554 (ma:  0.7897) | lr: 0.000640 | time/batch(avg):  0.44s | mem: 3.82GB/15.17GB
+2025-12-05 17:47:15,125 [INFO] ✓ New best checkpoint saved (PER: 0.5554)
+2025-12-05 17:47:51,859 [INFO] batch  1300 | loss:  1.6927 | per:  0.4977 (ma:  0.7689) | lr: 0.000693 | time/batch(avg):  0.44s | mem: 3.82GB/15.11GB
+2025-12-05 17:47:59,135 [INFO] ✓ New best checkpoint saved (PER: 0.4977)
+2025-12-05 17:48:36,311 [INFO] batch  1400 | loss:  1.5087 | per:  0.4413 (ma:  0.7470) | lr: 0.000747 | time/batch(avg):  0.44s | mem: 3.83GB/15.03GB
+2025-12-05 17:48:43,644 [INFO] ✓ New best checkpoint saved (PER: 0.4413)
+2025-12-05 17:49:20,149 [INFO] batch  1500 | loss:  1.3545 | per:  0.3919 (ma:  0.7248) | lr: 0.000800 | time/batch(avg):  0.44s | mem: 3.82GB/14.87GB
+2025-12-05 17:49:27,497 [INFO] ✓ New best checkpoint saved (PER: 0.3919)
+2025-12-05 17:50:04,848 [INFO] batch  1600 | loss:  1.2288 | per:  0.3536 (ma:  0.7030) | lr: 0.000853 | time/batch(avg):  0.45s | mem: 3.83GB/14.71GB
+2025-12-05 17:50:12,196 [INFO] ✓ New best checkpoint saved (PER: 0.3536)
+2025-12-05 17:50:49,655 [INFO] batch  1700 | loss:  1.1272 | per:  0.3229 (ma:  0.6819) | lr: 0.000907 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 17:50:56,937 [INFO] ✓ New best checkpoint saved (PER: 0.3229)
+2025-12-05 17:51:33,527 [INFO] batch  1800 | loss:  1.0461 | per:  0.2990 (ma:  0.6617) | lr: 0.000960 | time/batch(avg):  0.44s | mem: 3.83GB/15.25GB
+2025-12-05 17:51:40,756 [INFO] ✓ New best checkpoint saved (PER: 0.2990)
+2025-12-05 17:52:18,090 [INFO] batch  1900 | loss:  0.9818 | per:  0.2802 (ma:  0.6427) | lr: 0.001013 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 17:52:25,341 [INFO] ✓ New best checkpoint saved (PER: 0.2802)
+2025-12-05 17:53:02,267 [INFO] batch  2000 | loss:  0.9311 | per:  0.2666 (ma:  0.6248) | lr: 0.001067 | time/batch(avg):  0.44s | mem: 3.82GB/15.25GB
+2025-12-05 17:53:09,501 [INFO] ✓ New best checkpoint saved (PER: 0.2666)
+2025-12-05 17:53:47,209 [INFO] batch  2100 | loss:  0.8922 | per:  0.2553 (ma:  0.6080) | lr: 0.001120 | time/batch(avg):  0.45s | mem: 3.83GB/15.25GB
+2025-12-05 17:53:54,731 [INFO] ✓ New best checkpoint saved (PER: 0.2553)
+2025-12-05 17:54:32,257 [INFO] batch  2200 | loss:  0.8617 | per:  0.2459 (ma:  0.5922) | lr: 0.001173 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 17:54:39,511 [INFO] ✓ New best checkpoint saved (PER: 0.2459)
+2025-12-05 17:55:16,778 [INFO] batch  2300 | loss:  0.8383 | per:  0.2390 (ma:  0.5775) | lr: 0.001227 | time/batch(avg):  0.45s | mem: 3.81GB/15.25GB
+2025-12-05 17:55:23,931 [INFO] ✓ New best checkpoint saved (PER: 0.2390)
+2025-12-05 17:56:01,459 [INFO] batch  2400 | loss:  0.8202 | per:  0.2351 (ma:  0.5638) | lr: 0.001280 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 17:56:08,783 [INFO] ✓ New best checkpoint saved (PER: 0.2351)
+2025-12-05 17:56:45,588 [INFO] batch  2500 | loss:  0.8059 | per:  0.2289 (ma:  0.5509) | lr: 0.001333 | time/batch(avg):  0.44s | mem: 3.82GB/15.25GB
+2025-12-05 17:56:52,875 [INFO] ✓ New best checkpoint saved (PER: 0.2289)
+2025-12-05 17:57:30,561 [INFO] batch  2600 | loss:  0.7959 | per:  0.2252 (ma:  0.5389) | lr: 0.001387 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 17:57:37,914 [INFO] ✓ New best checkpoint saved (PER: 0.2252)
+2025-12-05 17:58:15,219 [INFO] batch  2700 | loss:  0.7885 | per:  0.2220 (ma:  0.5275) | lr: 0.001440 | time/batch(avg):  0.45s | mem: 3.83GB/15.25GB
+2025-12-05 17:58:22,490 [INFO] ✓ New best checkpoint saved (PER: 0.2220)
+2025-12-05 17:58:59,633 [INFO] batch  2800 | loss:  0.7837 | per:  0.2197 (ma:  0.5169) | lr: 0.001493 | time/batch(avg):  0.44s | mem: 3.81GB/15.25GB
+2025-12-05 17:59:06,929 [INFO] ✓ New best checkpoint saved (PER: 0.2197)
+2025-12-05 17:59:45,096 [INFO] batch  2900 | loss:  0.7830 | per:  0.2188 (ma:  0.5070) | lr: 0.001547 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 17:59:52,346 [INFO] ✓ New best checkpoint saved (PER: 0.2188)
+/opt/conda/lib/python3.10/site-packages/torch/optim/lr_scheduler.py:198: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+2025-12-05 18:00:28,918 [INFO] batch  3000 | loss:  0.7836 | per:  0.2175 (ma:  0.4977) | lr: 0.001600 | time/batch(avg):  0.44s | mem: 3.82GB/15.25GB
+2025-12-05 18:00:36,207 [INFO] ✓ New best checkpoint saved (PER: 0.2175)
+2025-12-05 18:01:13,305 [INFO] batch  3100 | loss:  0.7848 | per:  0.2178 (ma:  0.4889) | lr: 0.001600 | time/batch(avg):  0.44s | mem: 3.82GB/15.25GB
+2025-12-05 18:01:50,307 [INFO] batch  3200 | loss:  0.7866 | per:  0.2175 (ma:  0.4807) | lr: 0.001600 | time/batch(avg):  0.37s | mem: 3.82GB/15.25GB
+2025-12-05 18:01:57,579 [INFO] ✓ New best checkpoint saved (PER: 0.2175)
+2025-12-05 18:02:34,845 [INFO] batch  3300 | loss:  0.7883 | per:  0.2162 (ma:  0.4729) | lr: 0.001599 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 18:02:42,115 [INFO] ✓ New best checkpoint saved (PER: 0.2162)
+2025-12-05 18:03:19,283 [INFO] batch  3400 | loss:  0.7909 | per:  0.2167 (ma:  0.4656) | lr: 0.001599 | time/batch(avg):  0.44s | mem: 3.82GB/15.25GB
+2025-12-05 18:03:56,585 [INFO] batch  3500 | loss:  0.7925 | per:  0.2152 (ma:  0.4586) | lr: 0.001598 | time/batch(avg):  0.37s | mem: 3.82GB/15.25GB
+2025-12-05 18:04:04,326 [INFO] ✓ New best checkpoint saved (PER: 0.2152)
+2025-12-05 18:04:41,655 [INFO] batch  3600 | loss:  0.7957 | per:  0.2155 (ma:  0.4521) | lr: 0.001597 | time/batch(avg):  0.45s | mem: 3.82GB/15.25GB
+2025-12-05 18:05:18,826 [INFO] batch  3700 | loss:  0.7994 | per:  0.2165 (ma:  0.4459) | lr: 0.001596 | time/batch(avg):  0.37s | mem: 3.82GB/15.20GB
+2025-12-05 18:05:55,809 [INFO] batch  3800 | loss:  0.8032 | per:  0.2172 (ma:  0.4400) | lr: 0.001594 | time/batch(avg):  0.37s | mem: 3.82GB/15.12GB
+2025-12-05 18:06:32,550 [INFO] batch  3900 | loss:  0.8069 | per:  0.2183 (ma:  0.4345) | lr: 0.001593 | time/batch(avg):  0.37s | mem: 3.83GB/15.12GB
+2025-12-05 18:07:09,805 [INFO] batch  4000 | loss:  0.8126 | per:  0.2196 (ma:  0.4292) | lr: 0.001591 | time/batch(avg):  0.37s | mem: 3.82GB/15.12GB
+2025-12-05 18:07:47,205 [INFO] batch  4100 | loss:  0.8190 | per:  0.2204 (ma:  0.4242) | lr: 0.001589 | time/batch(avg):  0.37s | mem: 3.81GB/15.12GB
+2025-12-05 18:08:24,171 [INFO] batch  4200 | loss:  0.8265 | per:  0.2229 (ma:  0.4196) | lr: 0.001587 | time/batch(avg):  0.37s | mem: 3.82GB/15.12GB
+2025-12-05 18:09:01,492 [INFO] batch  4300 | loss:  0.8348 | per:  0.2248 (ma:  0.4151) | lr: 0.001585 | time/batch(avg):  0.37s | mem: 3.82GB/15.08GB
+2025-12-05 18:09:38,854 [INFO] batch  4400 | loss:  0.8408 | per:  0.2250 (ma:  0.4109) | lr: 0.001583 | time/batch(avg):  0.37s | mem: 3.83GB/14.99GB
+2025-12-05 18:10:15,699 [INFO] batch  4500 | loss:  0.8457 | per:  0.2244 (ma:  0.4069) | lr: 0.001580 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:10:52,625 [INFO] batch  4600 | loss:  0.8520 | per:  0.2245 (ma:  0.4030) | lr: 0.001577 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:11:29,809 [INFO] batch  4700 | loss:  0.8578 | per:  0.2267 (ma:  0.3993) | lr: 0.001574 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:12:07,271 [INFO] batch  4800 | loss:  0.8637 | per:  0.2275 (ma:  0.3958) | lr: 0.001571 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:12:44,505 [INFO] batch  4900 | loss:  0.8693 | per:  0.2283 (ma:  0.3924) | lr: 0.001568 | time/batch(avg):  0.37s | mem: 3.83GB/14.99GB
+2025-12-05 18:13:21,474 [INFO] batch  5000 | loss:  0.8759 | per:  0.2280 (ma:  0.3892) | lr: 0.001565 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:13:58,624 [INFO] batch  5100 | loss:  0.8815 | per:  0.2299 (ma:  0.3862) | lr: 0.001561 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:14:35,933 [INFO] batch  5200 | loss:  0.8859 | per:  0.2304 (ma:  0.3832) | lr: 0.001557 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:15:13,093 [INFO] batch  5300 | loss:  0.8913 | per:  0.2316 (ma:  0.3804) | lr: 0.001553 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:15:50,817 [INFO] batch  5400 | loss:  0.8987 | per:  0.2309 (ma:  0.3777) | lr: 0.001549 | time/batch(avg):  0.38s | mem: 3.82GB/14.99GB
+2025-12-05 18:16:27,552 [INFO] batch  5500 | loss:  0.9061 | per:  0.2317 (ma:  0.3751) | lr: 0.001545 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:17:04,553 [INFO] batch  5600 | loss:  0.9131 | per:  0.2318 (ma:  0.3726) | lr: 0.001540 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:17:41,454 [INFO] batch  5700 | loss:  0.9190 | per:  0.2330 (ma:  0.3702) | lr: 0.001536 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:18:19,277 [INFO] batch  5800 | loss:  0.9231 | per:  0.2347 (ma:  0.3679) | lr: 0.001531 | time/batch(avg):  0.38s | mem: 3.82GB/14.99GB
+2025-12-05 18:18:56,368 [INFO] batch  5900 | loss:  0.9281 | per:  0.2352 (ma:  0.3657) | lr: 0.001526 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:19:33,260 [INFO] batch  6000 | loss:  0.9331 | per:  0.2363 (ma:  0.3635) | lr: 0.001521 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:20:10,257 [INFO] batch  6100 | loss:  0.9368 | per:  0.2366 (ma:  0.3615) | lr: 0.001516 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:20:46,945 [INFO] batch  6200 | loss:  0.9408 | per:  0.2364 (ma:  0.3595) | lr: 0.001510 | time/batch(avg):  0.37s | mem: 3.82GB/14.99GB
+2025-12-05 18:21:24,375 [INFO] batch  6300 | loss:  0.9445 | per:  0.2370 (ma:  0.3576) | lr: 0.001505 | time/batch(avg):  0.37s | mem: 3.83GB/14.99GB

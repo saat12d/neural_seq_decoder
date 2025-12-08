@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-Generate a clean summary table of the most important runs.
-
-Shows the progression from baseline through key improvements.
-"""
 
 import json
 import pickle
@@ -15,14 +10,11 @@ import pandas as pd
 
 
 class RunDataLoader:
-    """Loads data from checkpoint directories."""
-    
     def __init__(self, checkpoint_dir: str):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.run_name = self.checkpoint_dir.name
         
     def load_metrics_jsonl(self):
-        """Load metrics from metrics.jsonl file."""
         metrics_file = self.checkpoint_dir / "metrics.jsonl"
         if not metrics_file.exists():
             return []
@@ -38,7 +30,6 @@ class RunDataLoader:
         return metrics
     
     def get_best_per(self):
-        """Get best PER and step from metrics.jsonl."""
         metrics = self.load_metrics_jsonl()
         if not metrics:
             return None, None
@@ -63,7 +54,6 @@ class RunDataLoader:
         return best_per if best_per != float('inf') else None, best_step
     
     def get_test_per(self):
-        """Get test PER from eval files (prefer test split, greedy decoding)."""
         eval_results = {}
         for eval_file in self.checkpoint_dir.glob("eval*.json"):
             try:
@@ -72,22 +62,18 @@ class RunDataLoader:
             except Exception:
                 pass
         
-        # Prefer test split with greedy decoding
         for eval_name, eval_data in eval_results.items():
             if 'avg_PER' in eval_data:
                 split = eval_data.get('split', '').lower()
                 method = eval_data.get('decoding_method', '').lower()
                 
-                # Skip competition set
                 if 'competition' in split or 'competition' in eval_name.lower():
                     continue
                 
-                # Prefer test split with greedy
                 if 'test' in split or 'test' in eval_name.lower():
                     if method == 'greedy':
                         return eval_data['avg_PER']
         
-        # Fallback: any non-competition eval
         for eval_name, eval_data in eval_results.items():
             if 'avg_PER' in eval_data:
                 if 'competition' not in eval_name.lower():
@@ -96,7 +82,6 @@ class RunDataLoader:
         return None
     
     def get_config_from_log(self):
-        """Extract config from train.log file."""
         log_file = self.checkpoint_dir / "train.log"
         if not log_file.exists():
             return {}
@@ -147,16 +132,14 @@ class RunDataLoader:
 
 
 def generate_summary_table(output_dir: Path):
-    """Generate the runs summary table."""
     print("Generating runs summary table...")
     
-    # Define the most important runs with their key changes
     runs = [
         {
             'run': 'speechBaseline4',
             'change': 'Baseline',
             'notes': 'Constant LR=0.02, FP32, heavy augmentation',
-            'val_per': None,  # Will be filled from data
+            'val_per': None,
             'test_per': None,
         },
         {
@@ -198,7 +181,6 @@ def generate_summary_table(output_dir: Path):
     
     checkpoints_dir = Path("data/checkpoints")
     
-    # Fill in data for each run
     for run_info in runs:
         run_name = run_info['run']
         run_dir = checkpoints_dir / run_name
@@ -208,21 +190,16 @@ def generate_summary_table(output_dir: Path):
             continue
         
         loader = RunDataLoader(str(run_dir))
-        
-        # Get validation PER (best from metrics.jsonl)
         val_per, _ = loader.get_best_per()
         
-        # For speechBaseline4, use test PER as proxy (no metrics.jsonl)
         if run_name == "speechBaseline4" and val_per is None:
             val_per = loader.get_test_per()
         
-        # Get test PER
         test_per = loader.get_test_per()
         
         run_info['val_per'] = val_per
         run_info['test_per'] = test_per
     
-    # Create DataFrame
     data = []
     for run_info in runs:
         data.append({
@@ -235,15 +212,12 @@ def generate_summary_table(output_dir: Path):
     
     df = pd.DataFrame(data)
     
-    # Save CSV
     output_file = output_dir / "runs_summary_table.csv"
     df.to_csv(output_file, index=False)
     print(f"  ✓ Saved to {output_file}")
     
-    # Save LaTeX (more compact format)
     latex_file = output_dir / "runs_summary_table.tex"
     with open(latex_file, 'w') as f:
-        # Create a more compact LaTeX table
         f.write("\\begin{table}[h]\n")
         f.write("\\centering\n")
         f.write("\\begin{tabular}{l l c c p{5cm}}\n")
@@ -267,7 +241,6 @@ def generate_summary_table(output_dir: Path):
     
     print(f"  ✓ Saved LaTeX to {latex_file}")
     
-    # Also create a markdown version
     md_file = output_dir / "runs_summary_table.md"
     with open(md_file, 'w') as f:
         f.write("# Key Training Runs Summary\n\n")
@@ -276,7 +249,6 @@ def generate_summary_table(output_dir: Path):
     
     print(f"  ✓ Saved Markdown to {md_file}")
     
-    # Print the table
     print("\n" + "=" * 80)
     print("Runs Summary Table:")
     print("=" * 80)
@@ -288,7 +260,7 @@ def generate_summary_table(output_dir: Path):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Generate runs summary table')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=str, default='paper_figures_v2', 
                        help='Output directory')
     

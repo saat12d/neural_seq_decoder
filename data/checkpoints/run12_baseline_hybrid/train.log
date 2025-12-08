@@ -1,0 +1,79 @@
+2025-12-04 19:01:11,616 [INFO] ================================================================================
+2025-12-04 19:01:11,616 [INFO] Starting training run
+2025-12-04 19:01:11,616 [INFO] ================================================================================
+2025-12-04 19:01:11,616 [INFO] Run Number: 12
+2025-12-04 19:01:11,616 [INFO] Run Name: run12_baseline_hybrid
+2025-12-04 19:01:11,616 [INFO] Run Purpose: Hybrid baseline: baseline LR (0.02) + Adam + noise/offset + SpecAugment + LayerNorm + gradient clipping
+2025-12-04 19:01:11,617 [INFO] Output directory: /home/bciuser/projects/neural_seq_decoder/data/checkpoints/run12_baseline_hybrid
+2025-12-04 19:01:11,617 [INFO] Dataset path: /home/bciuser/projects/neural_seq_decoder/data/formatted/ptDecoder_ctc
+2025-12-04 19:01:11,617 [INFO] Batch size: 64
+2025-12-04 19:01:11,617 [INFO] Total batches: 10000
+2025-12-04 19:01:11,617 [INFO] Seed: 0
+2025-12-04 19:01:14,158 [INFO] Dataset loaded: 24 training days
+2025-12-04 19:01:14,158 [INFO] Training samples: 8800
+2025-12-04 19:01:14,158 [INFO] Test samples: 880
+2025-12-04 19:01:14,158 [INFO] ================================================================================
+2025-12-04 19:01:14,159 [INFO] Model Architecture
+2025-12-04 19:01:14,159 [INFO] ================================================================================
+2025-12-04 19:01:14,159 [INFO] Input features: 256
+2025-12-04 19:01:14,159 [INFO] Hidden units: 1024
+2025-12-04 19:01:14,159 [INFO] GRU layers: 5
+2025-12-04 19:01:14,159 [INFO] Output classes: 40 (+ 1 blank = 41)
+2025-12-04 19:01:14,159 [INFO] Days (per-day embeddings): 24
+2025-12-04 19:01:14,159 [INFO] Dropout: 0.4
+2025-12-04 19:01:14,159 [INFO] Input dropout: 0.0
+2025-12-04 19:01:14,159 [INFO] Layer norm: True
+2025-12-04 19:01:14,159 [INFO] Bidirectional: True
+2025-12-04 19:01:14,159 [INFO] Stride length: 4, Kernel length: 32
+/opt/conda/lib/python3.10/site-packages/torch/functional.py:504: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3190.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+2025-12-04 19:01:19,752 [INFO] Enabled cuDNN benchmark for faster training
+2025-12-04 19:01:19,753 [INFO] torch.compile not available (requires PyTorch 2.0+)
+2025-12-04 19:01:19,753 [INFO] Total parameters: 135,424,553 (135.42M)
+2025-12-04 19:01:19,753 [INFO] Trainable parameters: 135,424,553
+2025-12-04 19:01:19,753 [INFO] ================================================================================
+2025-12-04 19:01:19,754 [INFO] CTC Sanity Checks
+2025-12-04 19:01:19,754 [INFO] ================================================================================
+2025-12-04 19:01:19,754 [INFO] ✓ CTCLoss blank index: 0
+2025-12-04 19:01:20,352 [INFO] ✓ T_eff calculation verified (min=31, max=150)
+2025-12-04 19:01:20,360 [INFO] ✓ Labels verified: no blanks found in valid label spans (all labels >= 1)
+2025-12-04 19:01:20,360 [INFO] ✓ Input lengths: min=157, max=633
+2025-12-04 19:01:20,360 [INFO] ✓ Target lengths: min=11, max=58
+2025-12-04 19:01:20,361 [INFO] ✓ T_eff lengths: min=31, max=150
+2025-12-04 19:01:20,361 [INFO] ================================================================================
+2025-12-04 19:01:20,361 [INFO] Using full precision (FP32) training
+2025-12-04 19:01:20,363 [INFO] ================================================================================
+2025-12-04 19:01:20,363 [INFO] Training Configuration
+2025-12-04 19:01:20,363 [INFO] ================================================================================
+2025-12-04 19:01:20,363 [INFO] Optimizer: ADAM
+2025-12-04 19:01:20,363 [INFO] Peak LR: 0.02 (capped), End LR: 0.02
+2025-12-04 19:01:20,363 [INFO] Warmup steps: 0, Cosine steps: 10000
+2025-12-04 19:01:20,363 [INFO] Weight decay: 1e-05
+2025-12-04 19:01:20,364 [INFO] Gradient clipping: max_norm=1.5
+2025-12-04 19:01:20,364 [INFO] Adaptive LR: DISABLED
+2025-12-04 19:01:20,364 [INFO] Augmentation - White noise SD: 0.8
+2025-12-04 19:01:20,364 [INFO] Augmentation - Constant offset SD: 0.2
+2025-12-04 19:01:20,364 [INFO] Time masking - Prob: 0.1, Width: 40, Max masks: 2
+2025-12-04 19:01:20,364 [INFO] Frequency masking - Prob: 0.1, Width: 12, Max masks: 2
+2025-12-04 19:01:20,364 [INFO] CTC Decoding: Greedy
+2025-12-04 19:01:20,364 [INFO] Using constant LR (no warmup, no decay)
+2025-12-04 19:01:20,365 [INFO] ================================================================================
+2025-12-04 19:01:20,365 [INFO] Starting training loop
+2025-12-04 19:01:20,365 [INFO] ================================================================================
+/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/augmentations.py:91: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at ../aten/src/ATen/native/Convolution.cpp:895.)
+  return self.conv(input, weight=self.weight, groups=self.groups, padding="same")
+2025-12-04 19:01:33,532 [INFO] batch     0 | loss: 15.9514 (train:  7.1767) | per:  0.9740 (ma:  0.9740) | grad_norm: 2.2701 (max: 2.2701) | lr: 0.020000 | skipped: 0 | time:  0.13s | mem: 2.21GB/10.75GB
+2025-12-04 19:01:33,973 [INFO] Sample prediction (step 0):
+2025-12-04 19:01:33,973 [INFO]   Target length: 20, Pred length: 0
+2025-12-04 19:01:33,973 [INFO]   Target IDs (first 20): [32, 18, 1, 20, 28, 3, 29, 18, 40, 28, 18, 20, 3, 23, 29, 17, 9, 12, 9, 40]
+2025-12-04 19:01:33,973 [INFO]   Pred IDs (first 20): []
+2025-12-04 19:01:33,974 [INFO]   Sample PER: 1.0000
+2025-12-04 19:01:36,321 [INFO] ✓ New best checkpoint saved (PER: 0.9740, PER_MA: 0.9740)
+2025-12-04 19:06:13,618 [INFO] batch   100 | loss: 12.6060 (train: 21.7566) | per:  0.9626 (ma:  0.9683) | grad_norm: 32.2254 (max: 177.6085) | lr: 0.020000 | skipped: 0 | time:  2.80s | mem: 2.21GB/12.22GB
+2025-12-04 19:06:21,401 [INFO] ✓ New best checkpoint saved (PER: 0.9626, PER_MA: 0.9683)
+2025-12-04 19:11:10,794 [INFO] batch   200 | loss: 22.9163 (train: 20.0107) | per:  0.9637 (ma:  0.9667) | grad_norm: 26.4037 (max: 60.3901) | lr: 0.020000 | skipped: 0 | time:  2.97s | mem: 2.21GB/12.22GB
+2025-12-04 19:16:01,219 [INFO] batch   300 | loss: 44.4592 (train: 32.0382) | per:  0.9817 (ma:  0.9705) | grad_norm: 36.3095 (max: 92.1810) | lr: 0.020000 | skipped: 0 | time:  2.90s | mem: 2.21GB/12.22GB
+2025-12-04 19:20:42,173 [INFO] batch   400 | loss: 107.7022 (train: 50.3588) | per:  0.9908 (ma:  0.9745) | grad_norm: 58.9096 (max: 201.2343) | lr: 0.020000 | skipped: 0 | time:  2.81s | mem: 2.21GB/12.22GB
+2025-12-04 19:25:20,769 [INFO] batch   500 | loss: 41.8855 (train: 64.2136) | per:  0.9637 (ma:  0.9727) | grad_norm: 44.9414 (max: 93.3229) | lr: 0.020000 | skipped: 0 | time:  2.79s | mem: 2.21GB/12.22GB
+2025-12-04 19:30:06,948 [INFO] batch   600 | loss: 34.7313 (train: 41.5357) | per:  0.9637 (ma:  0.9714) | grad_norm: 41.3441 (max: 94.9239) | lr: 0.020000 | skipped: 0 | time:  2.86s | mem: 2.21GB/12.22GB
+2025-12-04 19:35:03,834 [INFO] batch   700 | loss: 29.8760 (train: 43.0733) | per:  0.9637 (ma:  0.9705) | grad_norm: 42.5307 (max: 79.1721) | lr: 0.020000 | skipped: 0 | time:  2.97s | mem: 2.21GB/12.22GB

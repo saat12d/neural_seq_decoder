@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/home/bciuser/projects/neural_seq_decoder/scripts/train_model.py", line 87, in <module>
+    from neural_decoder.neural_decoder_trainer import trainModel
+  File "/home/bciuser/projects/neural_seq_decoder/src/neural_decoder/neural_decoder_trainer.py", line 83
+    Xp = pad_sequence(X, batch_first=True, padding_value=0)
+                                                           ^
+IndentationError: unindent does not match any outer indentation level

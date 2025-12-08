@@ -1,0 +1,317 @@
+{
+  "split": "test",
+  "num_samples": 880,
+  "avg_PER": 0.19385338926888093,
+  "median_PER": 0.17391304347826086,
+  "sample_details": [
+    {
+      "len_target": 20,
+      "len_hyp": 20,
+      "distance": 11,
+      "per": 0.55
+    },
+    {
+      "len_target": 33,
+      "len_hyp": 35,
+      "distance": 14,
+      "per": 0.42424242424242425
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 35,
+      "distance": 8,
+      "per": 0.23529411764705882
+    },
+    {
+      "len_target": 54,
+      "len_hyp": 49,
+      "distance": 19,
+      "per": 0.35185185185185186
+    },
+    {
+      "len_target": 46,
+      "len_hyp": 49,
+      "distance": 18,
+      "per": 0.391304347826087
+    },
+    {
+      "len_target": 46,
+      "len_hyp": 51,
+      "distance": 24,
+      "per": 0.5217391304347826
+    },
+    {
+      "len_target": 39,
+      "len_hyp": 37,
+      "distance": 22,
+      "per": 0.5641025641025641
+    },
+    {
+      "len_target": 38,
+      "len_hyp": 28,
+      "distance": 24,
+      "per": 0.631578947368421
+    },
+    {
+      "len_target": 44,
+      "len_hyp": 51,
+      "distance": 11,
+      "per": 0.25
+    },
+    {
+      "len_target": 48,
+      "len_hyp": 52,
+      "distance": 14,
+      "per": 0.2916666666666667
+    },
+    {
+      "len_target": 36,
+      "len_hyp": 35,
+      "distance": 14,
+      "per": 0.3888888888888889
+    },
+    {
+      "len_target": 29,
+      "len_hyp": 29,
+      "distance": 6,
+      "per": 0.20689655172413793
+    },
+    {
+      "len_target": 35,
+      "len_hyp": 38,
+      "distance": 14,
+      "per": 0.4
+    },
+    {
+      "len_target": 35,
+      "len_hyp": 34,
+      "distance": 16,
+      "per": 0.45714285714285713
+    },
+    {
+      "len_target": 62,
+      "len_hyp": 63,
+      "distance": 21,
+      "per": 0.3387096774193548
+    },
+    {
+      "len_target": 69,
+      "len_hyp": 68,
+      "distance": 27,
+      "per": 0.391304347826087
+    },
+    {
+      "len_target": 64,
+      "len_hyp": 63,
+      "distance": 18,
+      "per": 0.28125
+    },
+    {
+      "len_target": 61,
+      "len_hyp": 73,
+      "distance": 23,
+      "per": 0.3770491803278688
+    },
+    {
+      "len_target": 63,
+      "len_hyp": 63,
+      "distance": 20,
+      "per": 0.31746031746031744
+    },
+    {
+      "len_target": 38,
+      "len_hyp": 45,
+      "distance": 18,
+      "per": 0.47368421052631576
+    },
+    {
+      "len_target": 70,
+      "len_hyp": 67,
+      "distance": 24,
+      "per": 0.34285714285714286
+    },
+    {
+      "len_target": 55,
+      "len_hyp": 57,
+      "distance": 16,
+      "per": 0.2909090909090909
+    },
+    {
+      "len_target": 68,
+      "len_hyp": 72,
+      "distance": 12,
+      "per": 0.17647058823529413
+    },
+    {
+      "len_target": 22,
+      "len_hyp": 23,
+      "distance": 4,
+      "per": 0.18181818181818182
+    },
+    {
+      "len_target": 52,
+      "len_hyp": 52,
+      "distance": 15,
+      "per": 0.28846153846153844
+    },
+    {
+      "len_target": 65,
+      "len_hyp": 63,
+      "distance": 26,
+      "per": 0.4
+    },
+    {
+      "len_target": 51,
+      "len_hyp": 50,
+      "distance": 20,
+      "per": 0.39215686274509803
+    },
+    {
+      "len_target": 28,
+      "len_hyp": 28,
+      "distance": 5,
+      "per": 0.17857142857142858
+    },
+    {
+      "len_target": 32,
+      "len_hyp": 27,
+      "distance": 13,
+      "per": 0.40625
+    },
+    {
+      "len_target": 29,
+      "len_hyp": 28,
+      "distance": 11,
+      "per": 0.3793103448275862
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 38,
+      "distance": 15,
+      "per": 0.40540540540540543
+    },
+    {
+      "len_target": 39,
+      "len_hyp": 42,
+      "distance": 19,
+      "per": 0.48717948717948717
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 37,
+      "distance": 8,
+      "per": 0.21621621621621623
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 37,
+      "distance": 16,
+      "per": 0.47058823529411764
+    },
+    {
+      "len_target": 24,
+      "len_hyp": 30,
+      "distance": 9,
+      "per": 0.375
+    },
+    {
+      "len_target": 59,
+      "len_hyp": 61,
+      "distance": 13,
+      "per": 0.22033898305084745
+    },
+    {
+      "len_target": 78,
+      "len_hyp": 78,
+      "distance": 24,
+      "per": 0.3076923076923077
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 41,
+      "distance": 8,
+      "per": 0.21621621621621623
+    },
+    {
+      "len_target": 29,
+      "len_hyp": 33,
+      "distance": 9,
+      "per": 0.3103448275862069
+    },
+    {
+      "len_target": 24,
+      "len_hyp": 25,
+      "distance": 7,
+      "per": 0.2916666666666667
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 38,
+      "distance": 12,
+      "per": 0.32432432432432434
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 33,
+      "distance": 9,
+      "per": 0.2647058823529412
+    },
+    {
+      "len_target": 36,
+      "len_hyp": 39,
+      "distance": 7,
+      "per": 0.19444444444444445
+    },
+    {
+      "len_target": 21,
+      "len_hyp": 23,
+      "distance": 8,
+      "per": 0.38095238095238093
+    },
+    {
+      "len_target": 18,
+      "len_hyp": 20,
+      "distance": 5,
+      "per": 0.2777777777777778
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 31,
+      "distance": 10,
+      "per": 0.29411764705882354
+    },
+    {
+      "len_target": 28,
+      "len_hyp": 28,
+      "distance": 3,
+      "per": 0.10714285714285714
+    },
+    {
+      "len_target": 40,
+      "len_hyp": 42,
+      "distance": 11,
+      "per": 0.275
+    },
+    {
+      "len_target": 27,
+      "len_hyp": 27,
+      "distance": 5,
+      "per": 0.18518518518518517
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 36,
+      "distance": 8,
+      "per": 0.21621621621621623
+    }
+  ],
+  "checkpoint": "best_model.pt",
+  "decoding_method": "greedy",
+  "beam_size": null,
+  "temperature": 1.0,
+  "blank_bias": 0.0,
+  "tta_passes": 1,
+  "tta_noise_sd": 0.0,
+  "mc_dropout": false,
+  "use_ema_eval": false
+}

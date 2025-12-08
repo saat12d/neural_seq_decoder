@@ -1,0 +1,176 @@
+2025-12-05 04:56:14,789 [INFO] Enabled TF32 for faster FP32 matmuls (Ampere+ GPUs)
+2025-12-05 04:56:14,790 [INFO] ================================================================================
+2025-12-05 04:56:14,790 [INFO] Starting training run
+2025-12-05 04:56:14,790 [INFO] ================================================================================
+2025-12-05 04:56:14,790 [INFO] Run Number: 162
+2025-12-05 04:56:14,790 [INFO] Run Name: run16_sub20
+2025-12-05 04:56:14,790 [INFO] Run Purpose: Greedy-only: Warmup→Cosine, EMA=0.9995, bf16/amp, grad_accum=2, clip=1.0. Gentle aug + tiny input dropout; longer cosine tail to settle below 20% PER.
+2025-12-05 04:56:14,791 [INFO] Output directory: /home/bciuser/projects/neural_seq_decoder/data/checkpoints/run16_sub20
+2025-12-05 04:56:14,791 [INFO] Dataset path: /home/bciuser/projects/neural_seq_decoder/data/formatted/ptDecoder_ctc
+2025-12-05 04:56:14,791 [INFO] Batch size: 32
+2025-12-05 04:56:14,791 [INFO] Total batches: 16000
+2025-12-05 04:56:14,791 [INFO] Seed: 0
+2025-12-05 04:56:17,039 [INFO] Dataset loaded: 24 training days
+2025-12-05 04:56:17,039 [INFO] Training samples: 8000
+2025-12-05 04:56:17,039 [INFO] Validation samples: 800
+2025-12-05 04:56:17,039 [INFO] Test samples: 880
+2025-12-05 04:56:17,040 [INFO] ================================================================================
+2025-12-05 04:56:17,040 [INFO] Model Architecture
+2025-12-05 04:56:17,040 [INFO] ================================================================================
+2025-12-05 04:56:17,040 [INFO] Input features: 256
+2025-12-05 04:56:17,040 [INFO] Hidden units: 1024
+2025-12-05 04:56:17,040 [INFO] GRU layers: 5
+2025-12-05 04:56:17,040 [INFO] Output classes: 40 (+ 1 blank = 41)
+2025-12-05 04:56:17,040 [INFO] Days (per-day embeddings): 24
+2025-12-05 04:56:17,040 [INFO] Dropout: 0.4
+2025-12-05 04:56:17,040 [INFO] Input dropout: 0.05
+2025-12-05 04:56:17,040 [INFO] Layer norm: True
+2025-12-05 04:56:17,040 [INFO] Bidirectional: True
+2025-12-05 04:56:17,040 [INFO] Stride length: 4, Kernel length: 32
+2025-12-05 04:56:20,430 [INFO] Enabled cuDNN benchmark for faster training
+2025-12-05 04:56:20,431 [INFO] Total parameters: 135,424,553 (135.42M)
+2025-12-05 04:56:20,431 [INFO] Trainable parameters: 135,424,553
+2025-12-05 04:56:20,431 [INFO] ================================================================================
+2025-12-05 04:56:20,431 [INFO] CTC Sanity Checks
+2025-12-05 04:56:20,431 [INFO] ================================================================================
+2025-12-05 04:56:20,431 [INFO] ✓ CTCLoss blank index: 0
+2025-12-05 04:56:20,824 [INFO] ✓ T_eff calculation verified (min=34, max=215)
+2025-12-05 04:56:20,857 [INFO] ✓ Labels verified: no blanks in valid spans (labels>=1)
+2025-12-05 04:56:20,858 [INFO] ✓ Input lengths: min=170, max=893
+2025-12-05 04:56:20,858 [INFO] ✓ Target lengths: min=13, max=64
+2025-12-05 04:56:20,858 [INFO] ✓ T_eff lengths: min=34, max=215
+2025-12-05 04:56:20,859 [INFO] Using mixed precision BF16 (Ampere+)
+2025-12-05 04:56:20,860 [INFO]   Safety: log_softmax + CTCLoss computed in FP32
+2025-12-05 04:56:21,967 [INFO] EMA enabled: decay=0.9995
+2025-12-05 04:56:21,967 [INFO] ================================================================================
+2025-12-05 04:56:21,967 [INFO] Training Configuration
+2025-12-05 04:56:21,967 [INFO] ================================================================================
+2025-12-05 04:56:21,967 [INFO] Optimizer: ADAM
+2025-12-05 04:56:21,967 [INFO] Peak LR: 0.0016 | End LR: 6e-06
+2025-12-05 04:56:21,967 [INFO] Warmup steps: 1500 | Cosine steps: 14500
+2025-12-05 04:56:21,967 [INFO] Weight decay: 1e-05
+2025-12-05 04:56:21,967 [INFO] Gradient clipping: max_norm=1.0
+2025-12-05 04:56:21,968 [INFO] CTC Decoding: Greedy (no beam)
+2025-12-05 04:56:21,968 [INFO] Gradient accumulation: 2 steps (effective batch size: 64)
+2025-12-05 04:56:27,684 [INFO] batch     0 | loss:  6.3389 | per:  0.9096 (ma:  0.9096) | lr: 0.000000 | time/batch(avg):  0.06s | mem: 2.23GB/5.47GB
+2025-12-05 04:56:29,401 [INFO] ✓ New best checkpoint saved (val PER: 0.9096)
+2025-12-05 04:57:02,215 [INFO] batch   100 | loss:  6.3081 | per:  0.9038 (ma:  0.9067) | lr: 0.000053 | time/batch(avg):  0.35s | mem: 3.82GB/15.15GB
+2025-12-05 04:57:09,374 [INFO] ✓ New best checkpoint saved (val PER: 0.9038)
+2025-12-05 04:57:43,050 [INFO] batch   200 | loss:  6.2322 | per:  0.8785 (ma:  0.8973) | lr: 0.000107 | time/batch(avg):  0.41s | mem: 3.82GB/15.16GB
+2025-12-05 04:57:50,221 [INFO] ✓ New best checkpoint saved (val PER: 0.8785)
+2025-12-05 04:58:24,005 [INFO] batch   300 | loss:  6.1278 | per:  0.8596 (ma:  0.8879) | lr: 0.000160 | time/batch(avg):  0.41s | mem: 3.83GB/15.10GB
+2025-12-05 04:58:31,250 [INFO] ✓ New best checkpoint saved (val PER: 0.8596)
+2025-12-05 04:59:05,845 [INFO] batch   400 | loss:  5.9961 | per:  0.8514 (ma:  0.8806) | lr: 0.000213 | time/batch(avg):  0.42s | mem: 3.83GB/15.01GB
+2025-12-05 04:59:13,121 [INFO] ✓ New best checkpoint saved (val PER: 0.8514)
+2025-12-05 04:59:47,901 [INFO] batch   500 | loss:  5.8314 | per:  0.8446 (ma:  0.8746) | lr: 0.000267 | time/batch(avg):  0.42s | mem: 3.83GB/14.95GB
+2025-12-05 04:59:55,158 [INFO] ✓ New best checkpoint saved (val PER: 0.8446)
+2025-12-05 05:00:29,868 [INFO] batch   600 | loss:  5.6276 | per:  0.8365 (ma:  0.8691) | lr: 0.000320 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:00:37,089 [INFO] ✓ New best checkpoint saved (val PER: 0.8365)
+2025-12-05 05:01:11,464 [INFO] batch   700 | loss:  5.3788 | per:  0.8238 (ma:  0.8635) | lr: 0.000373 | time/batch(avg):  0.42s | mem: 3.83GB/15.41GB
+2025-12-05 05:01:18,699 [INFO] ✓ New best checkpoint saved (val PER: 0.8238)
+2025-12-05 05:01:53,853 [INFO] batch   800 | loss:  5.0838 | per:  0.8098 (ma:  0.8575) | lr: 0.000427 | time/batch(avg):  0.42s | mem: 3.83GB/15.41GB
+2025-12-05 05:02:01,069 [INFO] ✓ New best checkpoint saved (val PER: 0.8098)
+2025-12-05 05:02:35,504 [INFO] batch   900 | loss:  4.7457 | per:  0.7921 (ma:  0.8510) | lr: 0.000480 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:02:42,911 [INFO] ✓ New best checkpoint saved (val PER: 0.7921)
+2025-12-05 05:03:17,653 [INFO] batch  1000 | loss:  4.3708 | per:  0.7739 (ma:  0.8440) | lr: 0.000533 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:03:24,909 [INFO] ✓ New best checkpoint saved (val PER: 0.7739)
+2025-12-05 05:03:59,011 [INFO] batch  1100 | loss:  3.9770 | per:  0.7541 (ma:  0.8365) | lr: 0.000587 | time/batch(avg):  0.41s | mem: 3.82GB/15.41GB
+2025-12-05 05:04:06,240 [INFO] ✓ New best checkpoint saved (val PER: 0.7541)
+2025-12-05 05:04:41,104 [INFO] batch  1200 | loss:  3.5853 | per:  0.7328 (ma:  0.8285) | lr: 0.000640 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:04:48,431 [INFO] ✓ New best checkpoint saved (val PER: 0.7328)
+2025-12-05 05:05:23,326 [INFO] batch  1300 | loss:  3.2209 | per:  0.7097 (ma:  0.8200) | lr: 0.000693 | time/batch(avg):  0.42s | mem: 3.82GB/15.36GB
+2025-12-05 05:05:30,602 [INFO] ✓ New best checkpoint saved (val PER: 0.7097)
+2025-12-05 05:06:05,363 [INFO] batch  1400 | loss:  2.8932 | per:  0.6794 (ma:  0.8106) | lr: 0.000747 | time/batch(avg):  0.42s | mem: 3.83GB/14.79GB
+2025-12-05 05:06:12,701 [INFO] ✓ New best checkpoint saved (val PER: 0.6794)
+2025-12-05 05:06:47,655 [INFO] batch  1500 | loss:  2.6138 | per:  0.6503 (ma:  0.8006) | lr: 0.000800 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:06:54,805 [INFO] ✓ New best checkpoint saved (val PER: 0.6503)
+2025-12-05 05:07:29,117 [INFO] batch  1600 | loss:  2.3750 | per:  0.6226 (ma:  0.7901) | lr: 0.000853 | time/batch(avg):  0.41s | mem: 3.82GB/15.41GB
+2025-12-05 05:07:36,304 [INFO] ✓ New best checkpoint saved (val PER: 0.6226)
+2025-12-05 05:08:11,401 [INFO] batch  1700 | loss:  2.1758 | per:  0.5905 (ma:  0.7791) | lr: 0.000907 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:08:18,655 [INFO] ✓ New best checkpoint saved (val PER: 0.5905)
+2025-12-05 05:08:53,208 [INFO] batch  1800 | loss:  2.0067 | per:  0.5573 (ma:  0.7674) | lr: 0.000960 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:09:00,365 [INFO] ✓ New best checkpoint saved (val PER: 0.5573)
+2025-12-05 05:09:35,694 [INFO] batch  1900 | loss:  1.8609 | per:  0.5247 (ma:  0.7552) | lr: 0.001013 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:09:42,940 [INFO] ✓ New best checkpoint saved (val PER: 0.5247)
+2025-12-05 05:10:17,335 [INFO] batch  2000 | loss:  1.7340 | per:  0.4912 (ma:  0.7427) | lr: 0.001067 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:10:24,584 [INFO] ✓ New best checkpoint saved (val PER: 0.4912)
+2025-12-05 05:10:59,410 [INFO] batch  2100 | loss:  1.6240 | per:  0.4609 (ma:  0.7299) | lr: 0.001120 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:11:06,746 [INFO] ✓ New best checkpoint saved (val PER: 0.4609)
+2025-12-05 05:11:41,719 [INFO] batch  2200 | loss:  1.5306 | per:  0.4324 (ma:  0.7169) | lr: 0.001173 | time/batch(avg):  0.42s | mem: 3.83GB/15.41GB
+2025-12-05 05:11:48,976 [INFO] ✓ New best checkpoint saved (val PER: 0.4324)
+2025-12-05 05:12:23,867 [INFO] batch  2300 | loss:  1.4520 | per:  0.4088 (ma:  0.7041) | lr: 0.001227 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:12:31,113 [INFO] ✓ New best checkpoint saved (val PER: 0.4088)
+2025-12-05 05:13:06,416 [INFO] batch  2400 | loss:  1.3876 | per:  0.3883 (ma:  0.6915) | lr: 0.001280 | time/batch(avg):  0.43s | mem: 3.82GB/15.41GB
+2025-12-05 05:13:13,671 [INFO] ✓ New best checkpoint saved (val PER: 0.3883)
+2025-12-05 05:13:47,857 [INFO] batch  2500 | loss:  1.3349 | per:  0.3724 (ma:  0.6792) | lr: 0.001333 | time/batch(avg):  0.41s | mem: 3.83GB/15.41GB
+2025-12-05 05:13:55,147 [INFO] ✓ New best checkpoint saved (val PER: 0.3724)
+2025-12-05 05:14:29,756 [INFO] batch  2600 | loss:  1.2931 | per:  0.3586 (ma:  0.6673) | lr: 0.001387 | time/batch(avg):  0.42s | mem: 3.82GB/15.41GB
+2025-12-05 05:14:36,916 [INFO] ✓ New best checkpoint saved (val PER: 0.3586)
+2025-12-05 05:15:12,079 [INFO] batch  2700 | loss:  1.2634 | per:  0.3486 (ma:  0.6559) | lr: 0.001440 | time/batch(avg):  0.42s | mem: 3.83GB/15.41GB
+2025-12-05 05:15:19,236 [INFO] ✓ New best checkpoint saved (val PER: 0.3486)
+2025-12-05 05:15:53,872 [INFO] batch  2800 | loss:  1.2432 | per:  0.3434 (ma:  0.6452) | lr: 0.001493 | time/batch(avg):  0.42s | mem: 3.83GB/15.41GB
+2025-12-05 05:16:01,190 [INFO] ✓ New best checkpoint saved (val PER: 0.3434)
+2025-12-05 05:16:36,123 [INFO] batch  2900 | loss:  1.2323 | per:  0.3391 (ma:  0.6349) | lr: 0.001547 | time/batch(avg):  0.42s | mem: 3.83GB/15.41GB
+2025-12-05 05:16:43,447 [INFO] ✓ New best checkpoint saved (val PER: 0.3391)
+2025-12-05 05:17:19,125 [INFO] batch  3000 | loss:  1.2297 | per:  0.3368 (ma:  0.6253) | lr: 0.001600 | time/batch(avg):  0.43s | mem: 3.82GB/15.41GB
+2025-12-05 05:17:26,427 [INFO] ✓ New best checkpoint saved (val PER: 0.3368)
+2025-12-05 05:18:01,503 [INFO] batch  3100 | loss:  1.2361 | per:  0.3375 (ma:  0.6163) | lr: 0.001600 | time/batch(avg):  0.42s | mem: 3.83GB/15.41GB
+2025-12-05 05:18:35,854 [INFO] batch  3200 | loss:  1.2495 | per:  0.3408 (ma:  0.6080) | lr: 0.001600 | time/batch(avg):  0.34s | mem: 3.82GB/15.41GB
+2025-12-05 05:19:10,466 [INFO] batch  3300 | loss:  1.2692 | per:  0.3452 (ma:  0.6003) | lr: 0.001600 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:19:45,123 [INFO] batch  3400 | loss:  1.2946 | per:  0.3487 (ma:  0.5931) | lr: 0.001599 | time/batch(avg):  0.35s | mem: 3.82GB/15.35GB
+2025-12-05 05:20:19,782 [INFO] batch  3500 | loss:  1.3235 | per:  0.3537 (ma:  0.5864) | lr: 0.001599 | time/batch(avg):  0.35s | mem: 3.82GB/14.79GB
+2025-12-05 05:20:54,052 [INFO] batch  3600 | loss:  1.3569 | per:  0.3579 (ma:  0.5802) | lr: 0.001598 | time/batch(avg):  0.34s | mem: 3.82GB/15.41GB
+2025-12-05 05:21:29,321 [INFO] batch  3700 | loss:  1.3943 | per:  0.3660 (ma:  0.5746) | lr: 0.001598 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:22:04,028 [INFO] batch  3800 | loss:  1.4341 | per:  0.3738 (ma:  0.5695) | lr: 0.001597 | time/batch(avg):  0.35s | mem: 3.83GB/15.41GB
+2025-12-05 05:22:38,642 [INFO] batch  3900 | loss:  1.4763 | per:  0.3825 (ma:  0.5648) | lr: 0.001596 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:23:13,238 [INFO] batch  4000 | loss:  1.5219 | per:  0.3920 (ma:  0.5606) | lr: 0.001595 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:23:48,658 [INFO] batch  4100 | loss:  1.5719 | per:  0.4029 (ma:  0.5568) | lr: 0.001594 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:24:23,639 [INFO] batch  4200 | loss:  1.6238 | per:  0.4120 (ma:  0.5534) | lr: 0.001593 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:24:57,931 [INFO] batch  4300 | loss:  1.6793 | per:  0.4208 (ma:  0.5504) | lr: 0.001592 | time/batch(avg):  0.34s | mem: 3.83GB/15.41GB
+2025-12-05 05:25:33,266 [INFO] batch  4400 | loss:  1.7373 | per:  0.4310 (ma:  0.5478) | lr: 0.001591 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:26:07,889 [INFO] batch  4500 | loss:  1.7943 | per:  0.4383 (ma:  0.5454) | lr: 0.001590 | time/batch(avg):  0.35s | mem: 3.82GB/15.35GB
+2025-12-05 05:26:42,897 [INFO] batch  4600 | loss:  1.8532 | per:  0.4471 (ma:  0.5433) | lr: 0.001588 | time/batch(avg):  0.35s | mem: 3.82GB/14.79GB
+2025-12-05 05:27:17,477 [INFO] batch  4700 | loss:  1.9131 | per:  0.4556 (ma:  0.5415) | lr: 0.001587 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:27:52,386 [INFO] batch  4800 | loss:  1.9754 | per:  0.4657 (ma:  0.5399) | lr: 0.001585 | time/batch(avg):  0.35s | mem: 3.82GB/15.36GB
+2025-12-05 05:28:26,800 [INFO] batch  4900 | loss:  2.0380 | per:  0.4744 (ma:  0.5386) | lr: 0.001583 | time/batch(avg):  0.34s | mem: 3.82GB/14.79GB
+2025-12-05 05:29:02,185 [INFO] batch  5000 | loss:  2.1011 | per:  0.4824 (ma:  0.5375) | lr: 0.001581 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:29:36,552 [INFO] batch  5100 | loss:  2.1653 | per:  0.4908 (ma:  0.5366) | lr: 0.001579 | time/batch(avg):  0.34s | mem: 3.82GB/15.41GB
+2025-12-05 05:30:11,594 [INFO] batch  5200 | loss:  2.2319 | per:  0.5000 (ma:  0.5359) | lr: 0.001577 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:30:46,661 [INFO] batch  5300 | loss:  2.2976 | per:  0.5096 (ma:  0.5354) | lr: 0.001575 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:31:21,650 [INFO] batch  5400 | loss:  2.3623 | per:  0.5173 (ma:  0.5351) | lr: 0.001573 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:31:56,172 [INFO] batch  5500 | loss:  2.4231 | per:  0.5254 (ma:  0.5349) | lr: 0.001571 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:32:30,747 [INFO] batch  5600 | loss:  2.4854 | per:  0.5315 (ma:  0.5349) | lr: 0.001569 | time/batch(avg):  0.35s | mem: 3.83GB/15.41GB
+2025-12-05 05:33:06,221 [INFO] batch  5700 | loss:  2.5498 | per:  0.5385 (ma:  0.5349) | lr: 0.001566 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:33:41,394 [INFO] batch  5800 | loss:  2.6141 | per:  0.5451 (ma:  0.5351) | lr: 0.001564 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:34:15,917 [INFO] batch  5900 | loss:  2.6773 | per:  0.5494 (ma:  0.5353) | lr: 0.001561 | time/batch(avg):  0.35s | mem: 3.83GB/15.41GB
+2025-12-05 05:34:51,015 [INFO] batch  6000 | loss:  2.7398 | per:  0.5561 (ma:  0.5357) | lr: 0.001558 | time/batch(avg):  0.35s | mem: 3.83GB/15.41GB
+2025-12-05 05:35:25,506 [INFO] batch  6100 | loss:  2.8031 | per:  0.5611 (ma:  0.5361) | lr: 0.001555 | time/batch(avg):  0.34s | mem: 3.83GB/15.41GB
+2025-12-05 05:36:00,367 [INFO] batch  6200 | loss:  2.8644 | per:  0.5690 (ma:  0.5366) | lr: 0.001553 | time/batch(avg):  0.35s | mem: 3.82GB/15.41GB
+2025-12-05 05:36:35,332 [INFO] batch  6300 | loss:  2.9237 | per:  0.5745 (ma:  0.5372) | lr: 0.001550 | time/batch(avg):  0.35s | mem: 3.83GB/15.41GB
+2025-12-05 05:37:10,112 [INFO] batch  6400 | loss:  2.9831 | per:  0.5802 (ma:  0.5379) | lr: 0.001547 | time/batch(avg):  0.35s | mem: 3.83GB/15.36GB
+2025-12-05 05:37:45,045 [INFO] batch  6500 | loss:  3.0415 | per:  0.5849 (ma:  0.5386) | lr: 0.001543 | time/batch(avg):  0.35s | mem: 3.83GB/14.94GB
+2025-12-05 05:38:19,805 [INFO] batch  6600 | loss:  3.0966 | per:  0.5900 (ma:  0.5394) | lr: 0.001540 | time/batch(avg):  0.35s | mem: 3.82GB/15.33GB
+2025-12-05 05:38:54,914 [INFO] batch  6700 | loss:  3.1504 | per:  0.5982 (ma:  0.5402) | lr: 0.001537 | time/batch(avg):  0.35s | mem: 3.82GB/14.77GB
+2025-12-05 05:39:29,791 [INFO] batch  6800 | loss:  3.2038 | per:  0.6043 (ma:  0.5412) | lr: 0.001533 | time/batch(avg):  0.35s | mem: 3.83GB/15.39GB
+2025-12-05 05:40:04,165 [INFO] batch  6900 | loss:  3.2580 | per:  0.6069 (ma:  0.5421) | lr: 0.001530 | time/batch(avg):  0.34s | mem: 3.82GB/15.39GB
+2025-12-05 05:40:39,273 [INFO] batch  7000 | loss:  3.3091 | per:  0.6116 (ma:  0.5431) | lr: 0.001526 | time/batch(avg):  0.35s | mem: 3.83GB/15.39GB
+2025-12-05 05:41:14,331 [INFO] batch  7100 | loss:  3.3590 | per:  0.6144 (ma:  0.5441) | lr: 0.001523 | time/batch(avg):  0.35s | mem: 3.82GB/15.33GB
+2025-12-05 05:41:49,179 [INFO] batch  7200 | loss:  3.4079 | per:  0.6195 (ma:  0.5451) | lr: 0.001519 | time/batch(avg):  0.35s | mem: 3.82GB/14.77GB
+2025-12-05 05:42:24,168 [INFO] batch  7300 | loss:  3.4542 | per:  0.6254 (ma:  0.5462) | lr: 0.001515 | time/batch(avg):  0.35s | mem: 3.82GB/15.34GB
+2025-12-05 05:42:59,402 [INFO] batch  7400 | loss:  3.5000 | per:  0.6294 (ma:  0.5473) | lr: 0.001511 | time/batch(avg):  0.35s | mem: 3.82GB/14.77GB
+2025-12-05 05:43:34,179 [INFO] batch  7500 | loss:  3.5459 | per:  0.6322 (ma:  0.5484) | lr: 0.001507 | time/batch(avg):  0.35s | mem: 3.83GB/15.39GB
+2025-12-05 05:44:09,146 [INFO] batch  7600 | loss:  3.5928 | per:  0.6366 (ma:  0.5495) | lr: 0.001503 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:44:44,589 [INFO] batch  7700 | loss:  3.6367 | per:  0.6404 (ma:  0.5507) | lr: 0.001499 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:45:19,116 [INFO] batch  7800 | loss:  3.6801 | per:  0.6416 (ma:  0.5519) | lr: 0.001495 | time/batch(avg):  0.35s | mem: 3.83GB/15.39GB
+2025-12-05 05:45:52,992 [INFO] batch  7900 | loss:  3.7242 | per:  0.6439 (ma:  0.5530) | lr: 0.001490 | time/batch(avg):  0.34s | mem: 3.82GB/15.39GB
+2025-12-05 05:46:28,196 [INFO] batch  8000 | loss:  3.7675 | per:  0.6487 (ma:  0.5542) | lr: 0.001486 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:47:03,411 [INFO] batch  8100 | loss:  3.8098 | per:  0.6515 (ma:  0.5554) | lr: 0.001481 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:47:37,947 [INFO] batch  8200 | loss:  3.8488 | per:  0.6539 (ma:  0.5566) | lr: 0.001477 | time/batch(avg):  0.35s | mem: 3.82GB/15.33GB
+2025-12-05 05:48:12,256 [INFO] batch  8300 | loss:  3.8876 | per:  0.6569 (ma:  0.5578) | lr: 0.001472 | time/batch(avg):  0.34s | mem: 3.82GB/14.77GB
+2025-12-05 05:48:47,669 [INFO] batch  8400 | loss:  3.9276 | per:  0.6606 (ma:  0.5590) | lr: 0.001467 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:49:22,454 [INFO] batch  8500 | loss:  3.9656 | per:  0.6647 (ma:  0.5602) | lr: 0.001463 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:49:57,364 [INFO] batch  8600 | loss:  4.0005 | per:  0.6662 (ma:  0.5614) | lr: 0.001458 | time/batch(avg):  0.35s | mem: 3.82GB/15.33GB
+2025-12-05 05:50:32,102 [INFO] batch  8700 | loss:  4.0324 | per:  0.6675 (ma:  0.5626) | lr: 0.001453 | time/batch(avg):  0.35s | mem: 3.82GB/14.77GB
+2025-12-05 05:51:07,111 [INFO] batch  8800 | loss:  4.0644 | per:  0.6696 (ma:  0.5638) | lr: 0.001448 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:51:41,938 [INFO] batch  8900 | loss:  4.0986 | per:  0.6723 (ma:  0.5650) | lr: 0.001443 | time/batch(avg):  0.35s | mem: 3.82GB/15.39GB
+2025-12-05 05:52:17,033 [INFO] batch  9000 | loss:  4.1334 | per:  0.6746 (ma:  0.5662) | lr: 0.001437 | time/batch(avg):  0.35s | mem: 3.83GB/15.39GB

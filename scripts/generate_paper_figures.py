@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""
-Generate specific figures and tables for paper/publication.
-
-This script creates the exact figures and tables specified in the paper spec:
-1. Baseline vs clean reproduction table
-2. PER vs Step: LR schedules line plot
-3. Regularization ablation table
-4. Augmentation bar chart
-5. Decoding cost vs PER (optional)
-6. Final recipe summary table
-"""
 
 import os
 import sys
@@ -26,7 +15,6 @@ import matplotlib.patches as mpatches
 from matplotlib.figure import Figure
 import pandas as pd
 
-# Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -602,7 +590,7 @@ def figure6_final_recipe_table(output_dir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate paper figures and tables')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=str, default='paper_figures', 
                        help='Output directory for figures')
     parser.add_argument('--figures', type=str, nargs='+', 

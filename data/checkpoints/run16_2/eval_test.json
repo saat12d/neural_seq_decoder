@@ -1,0 +1,317 @@
+{
+  "split": "test",
+  "num_samples": 880,
+  "avg_PER": 0.9110882193282782,
+  "median_PER": 0.9090909090909091,
+  "sample_details": [
+    {
+      "len_target": 20,
+      "len_hyp": 14,
+      "distance": 18,
+      "per": 0.9
+    },
+    {
+      "len_target": 33,
+      "len_hyp": 20,
+      "distance": 28,
+      "per": 0.8484848484848485
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 23,
+      "distance": 32,
+      "per": 0.9411764705882353
+    },
+    {
+      "len_target": 54,
+      "len_hyp": 38,
+      "distance": 47,
+      "per": 0.8703703703703703
+    },
+    {
+      "len_target": 46,
+      "len_hyp": 30,
+      "distance": 39,
+      "per": 0.8478260869565217
+    },
+    {
+      "len_target": 46,
+      "len_hyp": 28,
+      "distance": 41,
+      "per": 0.8913043478260869
+    },
+    {
+      "len_target": 39,
+      "len_hyp": 30,
+      "distance": 34,
+      "per": 0.8717948717948718
+    },
+    {
+      "len_target": 38,
+      "len_hyp": 21,
+      "distance": 34,
+      "per": 0.8947368421052632
+    },
+    {
+      "len_target": 44,
+      "len_hyp": 37,
+      "distance": 41,
+      "per": 0.9318181818181818
+    },
+    {
+      "len_target": 48,
+      "len_hyp": 36,
+      "distance": 41,
+      "per": 0.8541666666666666
+    },
+    {
+      "len_target": 36,
+      "len_hyp": 25,
+      "distance": 31,
+      "per": 0.8611111111111112
+    },
+    {
+      "len_target": 29,
+      "len_hyp": 18,
+      "distance": 27,
+      "per": 0.9310344827586207
+    },
+    {
+      "len_target": 35,
+      "len_hyp": 18,
+      "distance": 30,
+      "per": 0.8571428571428571
+    },
+    {
+      "len_target": 35,
+      "len_hyp": 17,
+      "distance": 33,
+      "per": 0.9428571428571428
+    },
+    {
+      "len_target": 62,
+      "len_hyp": 36,
+      "distance": 55,
+      "per": 0.8870967741935484
+    },
+    {
+      "len_target": 69,
+      "len_hyp": 39,
+      "distance": 62,
+      "per": 0.8985507246376812
+    },
+    {
+      "len_target": 64,
+      "len_hyp": 34,
+      "distance": 59,
+      "per": 0.921875
+    },
+    {
+      "len_target": 61,
+      "len_hyp": 43,
+      "distance": 54,
+      "per": 0.8852459016393442
+    },
+    {
+      "len_target": 63,
+      "len_hyp": 37,
+      "distance": 57,
+      "per": 0.9047619047619048
+    },
+    {
+      "len_target": 38,
+      "len_hyp": 24,
+      "distance": 35,
+      "per": 0.9210526315789473
+    },
+    {
+      "len_target": 70,
+      "len_hyp": 40,
+      "distance": 63,
+      "per": 0.9
+    },
+    {
+      "len_target": 55,
+      "len_hyp": 38,
+      "distance": 47,
+      "per": 0.8545454545454545
+    },
+    {
+      "len_target": 68,
+      "len_hyp": 43,
+      "distance": 59,
+      "per": 0.8676470588235294
+    },
+    {
+      "len_target": 22,
+      "len_hyp": 17,
+      "distance": 20,
+      "per": 0.9090909090909091
+    },
+    {
+      "len_target": 52,
+      "len_hyp": 29,
+      "distance": 44,
+      "per": 0.8461538461538461
+    },
+    {
+      "len_target": 65,
+      "len_hyp": 25,
+      "distance": 58,
+      "per": 0.8923076923076924
+    },
+    {
+      "len_target": 51,
+      "len_hyp": 31,
+      "distance": 47,
+      "per": 0.9215686274509803
+    },
+    {
+      "len_target": 28,
+      "len_hyp": 20,
+      "distance": 24,
+      "per": 0.8571428571428571
+    },
+    {
+      "len_target": 32,
+      "len_hyp": 13,
+      "distance": 30,
+      "per": 0.9375
+    },
+    {
+      "len_target": 29,
+      "len_hyp": 15,
+      "distance": 26,
+      "per": 0.896551724137931
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 24,
+      "distance": 32,
+      "per": 0.8648648648648649
+    },
+    {
+      "len_target": 39,
+      "len_hyp": 21,
+      "distance": 35,
+      "per": 0.8974358974358975
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 21,
+      "distance": 34,
+      "per": 0.918918918918919
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 21,
+      "distance": 31,
+      "per": 0.9117647058823529
+    },
+    {
+      "len_target": 24,
+      "len_hyp": 16,
+      "distance": 22,
+      "per": 0.9166666666666666
+    },
+    {
+      "len_target": 59,
+      "len_hyp": 32,
+      "distance": 51,
+      "per": 0.864406779661017
+    },
+    {
+      "len_target": 78,
+      "len_hyp": 33,
+      "distance": 69,
+      "per": 0.8846153846153846
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 25,
+      "distance": 33,
+      "per": 0.8918918918918919
+    },
+    {
+      "len_target": 29,
+      "len_hyp": 22,
+      "distance": 27,
+      "per": 0.9310344827586207
+    },
+    {
+      "len_target": 24,
+      "len_hyp": 14,
+      "distance": 23,
+      "per": 0.9583333333333334
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 32,
+      "distance": 34,
+      "per": 0.918918918918919
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 19,
+      "distance": 31,
+      "per": 0.9117647058823529
+    },
+    {
+      "len_target": 36,
+      "len_hyp": 19,
+      "distance": 33,
+      "per": 0.9166666666666666
+    },
+    {
+      "len_target": 21,
+      "len_hyp": 9,
+      "distance": 20,
+      "per": 0.9523809523809523
+    },
+    {
+      "len_target": 18,
+      "len_hyp": 11,
+      "distance": 16,
+      "per": 0.8888888888888888
+    },
+    {
+      "len_target": 34,
+      "len_hyp": 20,
+      "distance": 29,
+      "per": 0.8529411764705882
+    },
+    {
+      "len_target": 28,
+      "len_hyp": 19,
+      "distance": 24,
+      "per": 0.8571428571428571
+    },
+    {
+      "len_target": 40,
+      "len_hyp": 26,
+      "distance": 36,
+      "per": 0.9
+    },
+    {
+      "len_target": 27,
+      "len_hyp": 18,
+      "distance": 25,
+      "per": 0.9259259259259259
+    },
+    {
+      "len_target": 37,
+      "len_hyp": 15,
+      "distance": 34,
+      "per": 0.918918918918919
+    }
+  ],
+  "checkpoint": "best_model.pt",
+  "decoding_method": "greedy",
+  "beam_size": null,
+  "temperature": 1.0,
+  "blank_bias": 0.0,
+  "tta_passes": 1,
+  "tta_noise_sd": 0.0,
+  "mc_dropout": false,
+  "use_ema_eval": false
+}

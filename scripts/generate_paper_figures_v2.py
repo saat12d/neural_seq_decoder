@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-Generate figures and tables for paper (revised spec).
-
-Figures:
-1. Baseline vs. Reproduction table
-2. LR & Scheduler multi-panel figure
-3. Optimizer & Weight Decay table
-4. Regularization multi-panel figure or table
-5. Data Augmentation figure
-6. Decoding inset/figure
-7. Best Configuration table
-"""
 
 import os
 import sys
@@ -27,20 +15,16 @@ import matplotlib.patches as mpatches
 from matplotlib.figure import Figure
 import pandas as pd
 
-# Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
 class RunDataLoader:
-    """Loads data from checkpoint directories."""
-    
     def __init__(self, checkpoint_dir: str):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.run_name = self.checkpoint_dir.name
         
     def load_metrics_jsonl(self) -> List[Dict[str, Any]]:
-        """Load metrics from metrics.jsonl file."""
         metrics_file = self.checkpoint_dir / "metrics.jsonl"
         if not metrics_file.exists():
             return []
@@ -56,7 +40,6 @@ class RunDataLoader:
         return metrics
     
     def load_args(self) -> Optional[Dict[str, Any]]:
-        """Load training arguments from args pickle file."""
         args_file = self.checkpoint_dir / "args"
         if not args_file.exists():
             return None
@@ -68,7 +51,6 @@ class RunDataLoader:
             return None
     
     def load_eval_results(self) -> Dict[str, Dict[str, Any]]:
-        """Load all eval_*.json files."""
         eval_results = {}
         for eval_file in self.checkpoint_dir.glob("eval*.json"):
             try:
@@ -79,7 +61,6 @@ class RunDataLoader:
         return eval_results
     
     def get_best_per(self, greedy_only: bool = True) -> Tuple[Optional[float], Optional[int]]:
-        """Get best PER and step from metrics.jsonl."""
         metrics = self.load_metrics_jsonl()
         if not metrics:
             return None, None
@@ -104,26 +85,21 @@ class RunDataLoader:
         return best_per if best_per != float('inf') else None, best_step
     
     def get_test_per(self, greedy_only: bool = True) -> Optional[float]:
-        """Get test PER from eval files (prefer test split, greedy decoding)."""
         eval_results = self.load_eval_results()
         
-        # Prefer test split with greedy decoding
         for eval_name, eval_data in eval_results.items():
             if 'avg_PER' in eval_data:
                 split = eval_data.get('split', '').lower()
                 method = eval_data.get('decoding_method', '').lower()
                 
-                # Skip competition set
                 if 'competition' in split or 'competition' in eval_name.lower():
                     continue
                 
-                # Prefer test split
                 if 'test' in split or 'test' in eval_name.lower():
                     if greedy_only and method != 'greedy':
                         continue
                     return eval_data['avg_PER']
         
-        # Fallback: any non-competition eval
         for eval_name, eval_data in eval_results.items():
             if 'avg_PER' in eval_data:
                 if 'competition' not in eval_name.lower():
@@ -132,7 +108,6 @@ class RunDataLoader:
         return None
     
     def get_config_from_log(self) -> Dict[str, Any]:
-        """Extract config from train.log file."""
         log_file = self.checkpoint_dir / "train.log"
         if not log_file.exists():
             return {}
@@ -140,8 +115,6 @@ class RunDataLoader:
         config = {}
         with open(log_file, 'r') as f:
             content = f.read()
-            
-            # Extract scheduler
             if "Using constant LR" in content or "constant LR (no warmup, no decay)" in content:
                 config['scheduler'] = "Constant"
             elif "OneCycleLR" in content:
@@ -153,7 +126,6 @@ class RunDataLoader:
             else:
                 config['scheduler'] = "Unknown"
             
-            # Extract LR
             match = re.search(r'Peak LR: ([\d.e-]+)', content)
             if match:
                 config['peak_lr'] = match.group(1)
@@ -161,8 +133,6 @@ class RunDataLoader:
             match = re.search(r'End LR: ([\d.e-]+)', content)
             if match:
                 config['end_lr'] = match.group(1)
-            
-            # Extract precision
             if "BF16" in content or "bfloat16" in content:
                 config['precision'] = "BF16"
             elif "FP16" in content or "float16" in content:
@@ -170,7 +140,6 @@ class RunDataLoader:
             elif "FP32" in content or "full precision" in content:
                 config['precision'] = "FP32"
             
-            # Extract gradient clipping
             match = re.search(r'Gradient clipping: max_norm=([\d.]+)', content)
             if match:
                 config['grad_clip'] = float(match.group(1))
@@ -179,21 +148,18 @@ class RunDataLoader:
             else:
                 config['grad_clip'] = None
             
-            # Extract EMA
             match = re.search(r'EMA enabled: decay=([\d.]+)', content)
             if match:
                 config['ema_decay'] = float(match.group(1))
             else:
                 config['ema_decay'] = None
             
-            # Extract input dropout
             match = re.search(r'Input dropout: ([\d.]+)', content)
             if match:
                 config['input_dropout'] = float(match.group(1))
             else:
                 config['input_dropout'] = 0.0
             
-            # Extract augmentation
             match = re.search(r'White noise SD: ([\d.]+)', content)
             if match:
                 config['noise_sd'] = float(match.group(1))
@@ -206,7 +172,6 @@ class RunDataLoader:
             else:
                 config['offset_sd'] = None
             
-            # Extract warmup/cosine steps
             match = re.search(r'Warmup steps: (\d+)', content)
             if match:
                 config['warmup_steps'] = int(match.group(1))
@@ -215,13 +180,11 @@ class RunDataLoader:
             if match:
                 config['cosine_steps'] = int(match.group(1))
             
-            # Extract optimizer
             if "AdamW" in content:
                 config['optimizer'] = "AdamW"
             elif "ADAM" in content or "Adam" in content:
                 config['optimizer'] = "Adam"
             
-            # Extract weight decay
             match = re.search(r'Weight decay: ([\d.e-]+)', content)
             if match:
                 config['weight_decay'] = float(match.group(1))
@@ -232,7 +195,6 @@ class RunDataLoader:
 
 
 def figure1_baseline_table(output_dir: Path):
-    """Figure 1: Baseline vs. Reproduction table (3-4 rows)."""
     print("Generating Figure 1: Baseline vs. Reproduction table...")
     
     runs = [
@@ -253,15 +215,13 @@ def figure1_baseline_table(output_dir: Path):
         
         loader = RunDataLoader(str(run_dir))
         
-        # For speechBaseline4, use known config
         if run_name == "speechBaseline4":
             config = defaults.copy()
-            best_per = loader.get_test_per()  # Use test PER since no metrics.jsonl
+            best_per = loader.get_test_per()
             best_step = None
         else:
             config = loader.get_config_from_log()
             best_per, best_step = loader.get_best_per()
-            # Fill in defaults
             for key, value in defaults.items():
                 if key not in config or config[key] is None:
                     config[key] = value
@@ -294,18 +254,14 @@ def figure1_baseline_table(output_dir: Path):
 
 
 def figure2_lr_scheduler_panels(output_dir: Path):
-    """Figure 2: LR & Scheduler multi-panel figure."""
     print("Generating Figure 2: LR & Scheduler multi-panel figure...")
     
     fig = plt.figure(figsize=(14, 5))
-    
-    # Panel A: Constant-LR sweep
     ax1 = plt.subplot(1, 3, 1)
     constant_runs = [
         ("gru_ctc_reg5", "1e-3", "dashed"),
         ("gru_ctc_reg6", "1.5e-3", "dotted"),
     ]
-    # Need to find a 1.2e-3 run or approximate
     checkpoints_dir = Path("data/checkpoints")
     
     for run_name, lr_label, linestyle in constant_runs:
@@ -342,7 +298,6 @@ def figure2_lr_scheduler_panels(output_dir: Path):
     ax1.grid(True, alpha=0.3)
     ax1.legend(fontsize=9)
     
-    # Panel B: Warmup→Cosine variants
     ax2 = plt.subplot(1, 3, 2)
     warmup_runs = [
         ("run15_warmup_cosine_safe", "Run15"),
@@ -387,9 +342,7 @@ def figure2_lr_scheduler_panels(output_dir: Path):
     ax2.grid(True, alpha=0.3)
     ax2.legend(fontsize=8)
     
-    # Panel C: LR(t) profiles (optional)
     ax3 = plt.subplot(1, 3, 3)
-    # Plot LR schedules for best two
     best_runs = ["run16_4", "run16_5"]
     for run_name in best_runs:
         run_dir = checkpoints_dir / run_name
@@ -428,11 +381,7 @@ def figure2_lr_scheduler_panels(output_dir: Path):
 
 
 def figure3_optimizer_table(output_dir: Path):
-    """Figure 3: Optimizer & Weight Decay table."""
     print("Generating Figure 3: Optimizer & Weight Decay table...")
-    print("  Note: Checking for Adam vs AdamW comparison runs...")
-    
-    # Check which runs have AdamW
     checkpoints_dir = Path("data/checkpoints")
     runs_to_check = ["run10_recovery", "run11_plateau_break", "run12_baseline_hybrid"]
     
@@ -479,7 +428,6 @@ def figure3_optimizer_table(output_dir: Path):
 
 
 def figure4_regularization(output_dir: Path):
-    """Figure 4: Regularization ablation (table + small plot)."""
     print("Generating Figure 4: Regularization ablation...")
     
     runs = [
@@ -489,7 +437,6 @@ def figure4_regularization(output_dir: Path):
         ("run16_4", {"clip": 1.0, "ema": 0.9995, "dropout": 0.4, "input_dropout": 0.05}),
     ]
     
-    # Create table
     data = []
     checkpoints_dir = Path("data/checkpoints")
     
@@ -502,7 +449,6 @@ def figure4_regularization(output_dir: Path):
         config = loader.get_config_from_log()
         best_per, _ = loader.get_best_per()
         
-        # Fill defaults
         for key, value in defaults.items():
             if key not in config or config[key] is None:
                 config[key] = value
@@ -522,7 +468,6 @@ def figure4_regularization(output_dir: Path):
     df.to_csv(output_file, index=False)
     print(f"  ✓ Saved table to {output_file}")
     
-    # Create small plot: EMA decay sweep
     fig, ax = plt.subplots(figsize=(6, 4))
     
     ema_runs = [
@@ -569,7 +514,6 @@ def figure4_regularization(output_dir: Path):
 
 
 def figure5_augmentation(output_dir: Path):
-    """Figure 5: Data Augmentation bars."""
     print("Generating Figure 5: Data Augmentation bars...")
     
     runs = [
@@ -589,7 +533,6 @@ def figure5_augmentation(output_dir: Path):
         loader = RunDataLoader(str(run_dir))
         best_per, _ = loader.get_best_per()
         
-        # For speechBaseline4, use test PER (no metrics.jsonl)
         if run_name == "speechBaseline4" and best_per is None:
             best_per = loader.get_test_per()
         
@@ -624,7 +567,6 @@ def figure5_augmentation(output_dir: Path):
         ax.text(bar.get_x() + bar.get_width()/2., height,
                f'{per:.4f}', ha='center', va='bottom', fontsize=10)
     
-    # Add caption note
     ax.text(0.5, -0.15, 'Note: Over-masking slowed late-cosine convergence',
            transform=ax.transAxes, fontsize=9, style='italic',
            ha='center', va='top')
@@ -637,12 +579,7 @@ def figure5_augmentation(output_dir: Path):
 
 
 def figure6_decoding_inset(output_dir: Path):
-    """Figure 6: Decoding comparison (greedy vs beam)."""
     print("Generating Figure 6: Decoding comparison...")
-    print("  Note: Requires eval results with different beam sizes")
-    
-    # This would need eval results with beam search
-    # For now, create a placeholder structure
     checkpoints_dir = Path("data/checkpoints")
     run_name = "run16_5"
     run_dir = checkpoints_dir / run_name
@@ -702,7 +639,6 @@ def figure6_decoding_inset(output_dir: Path):
 
 
 def figure7_best_config_table(output_dir: Path):
-    """Figure 7: Best Configuration table (Run16_5 recipe)."""
     print("Generating Figure 7: Best Configuration table...")
     
     run_name = "run16_5"
@@ -748,7 +684,7 @@ def figure7_best_config_table(output_dir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate paper figures (revised spec)')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=str, default='paper_figures_v2', 
                        help='Output directory for figures')
     parser.add_argument('--figures', type=str, nargs='+', 
